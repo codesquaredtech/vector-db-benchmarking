@@ -163,3 +163,7 @@ cython_debug/
 
 # Images
 images/
+
+
+# Milvus
+volumes/

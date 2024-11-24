@@ -1,9 +1,10 @@
-import json
 from multiprocessing import Pool
+
+from deepface import DeepFace
 
 from app.db.milvus import milvus_client
 from app.face_detection import (create_embedding,
-                                extract_faces_from_mediapipe_detections,
+                                extract_faces_from_deepface_detections,
                                 initialise_face_detector,
                                 initialise_face_embedder)
 from app.images import convert_bytes_to_image, get_image_paths
@@ -23,10 +24,13 @@ def process_image(image_path):
     face_embedder = initialise_face_embedder()
 
     numpy_image, mediapipe_image = convert_bytes_to_image(image_path)
-    detected_faces = face_detector.detect(mediapipe_image)
-    face_images = extract_faces_from_mediapipe_detections(
-        numpy_image, detected_faces
+    detected_faces = DeepFace.extract_faces(
+                                img_path=numpy_image,
+                            )
+    face_images = extract_faces_from_deepface_detections(
+        detected_faces
     )
+
     logger.info(f"Number of faces on the image: {len(face_images)}")
     for image in face_images:
         vectors_to_insert.append(
