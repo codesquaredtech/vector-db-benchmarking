@@ -11,9 +11,9 @@ from app.images import convert_bytes_to_image, get_image_paths
 from app.logger import get_logger
 
 SUPPORTED_IMAGE_TYPES = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
-REFERENT_IMAGE_DIRECTORY = './images/'
+REFERENT_IMAGE_DIRECTORY = './images/testing/'
 CHUNK_SIZE = 100
-POOL_PROCESSES = 4
+POOL_PROCESSES = 1
 
 
 def process_image(image_path):
@@ -45,7 +45,7 @@ def process_image(image_path):
 
 def process_images_in_directory(directory_path, chunk_size=100):
     image_files = get_image_paths(directory_path=directory_path, supported_image_types=SUPPORTED_IMAGE_TYPES)
-    print(f"len of image_files: {len(image_files)}")
+    logger.info(f"len of image_files: {len(image_files)}")
 
     with Pool(processes=POOL_PROCESSES) as pool:
         pool.map(process_image, image_files, chunksize=chunk_size)

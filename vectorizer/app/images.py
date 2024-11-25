@@ -10,7 +10,7 @@ def get_image_paths(directory_path, supported_image_types) -> list[str]:
 
     for root, _, files in os.walk(directory_path):
         for filename in files:
-            if filename.endswith(supported_image_types):
+            if filename.lower().endswith(supported_image_types):
                 paths.append(os.path.join(root, filename))
     return paths
 
