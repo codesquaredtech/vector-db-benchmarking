@@ -1,0 +1,18 @@
+
+networks:
+  vector_db_testing:
+    name: vector_db_testing
+    external: true
+
+
+services:
+  benchmarker:
+    build: .
+    volumes:
+      - ./main.py:/benchmarker/main.py
+      - ./logs:/benchmarker/logs
+      - ./app:/benchmarker/app
+      - ./output:/benchmarker/output
+    networks:
+      - vector_db_testing
+    command: ["python", "main.py"]
