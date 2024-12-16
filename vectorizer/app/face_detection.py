@@ -78,5 +78,8 @@ def create_embedding(np_array, embedder):
 
     embedding = embedding_object.embeddings[0].embedding
     float_embedding = np.array(embedding, dtype=np.float32)
+    normalised_float_embedding = (float_embedding - float_embedding.min()) / (
+        float_embedding.max() - float_embedding.min()
+    )
 
-    return float_embedding
+    return normalised_float_embedding
