@@ -27,7 +27,10 @@ def process_image(image_path):
 
     numpy_image, _ = convert_bytes_to_image(image_path)
     detected_faces = DeepFace.extract_faces(
-        img_path=numpy_image, enforce_detection=False
+        img_path=numpy_image,
+        enforce_detection=False,
+        detector_backend="retinaface",
+        align=True,
     )
     face_images = extract_faces_from_deepface_detections(detected_faces)
 
