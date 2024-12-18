@@ -104,4 +104,40 @@ def insert_embeddings_into_vector_database(
         logger.error(f"Unsupported vector database: {vector_database_name}")
 
 
-# TODO: Add functions for search
+@handle_exceptions(logger)
+def retrieve_similar_embeddings(
+    image_embedding, threshold=0.7, limit=10, vector_database_name="MILVUS"
+):
+    if vector_database_name == "MILVUS":
+        collection = Collection(name=COLLECTION_NAME)
+        collection.load()
+
+        search_params = {
+            "metric_type": "COSINE",
+            "params": {"radius": threshold},
+        }
+
+        # Perform the search
+        results = collection.search(
+            data=[image_embedding],
+            anns_field="embedding",
+            param=search_params,
+            limit=limit,
+            expr=None,
+            output_fields=["id", "image_path"],
+        )
+
+        # Process the results - # TODO: Metrics should come here
+        similar_embeddings = []
+        for result in results:
+            for hit in result:
+                similar_embeddings.append(
+                    {
+                        "id": hit.entity.get("id"),
+                        "image_path": hit.entity.get("image_path"),
+                        "score": hit.score,
+                    }
+                )
+        return similar_embeddings
+    else:
+        logger.error(f"Unsupported vector database: {vector_database_name}")

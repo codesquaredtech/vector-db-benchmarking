@@ -10,6 +10,6 @@ RUN apt-get update && apt-get install -y \
 COPY ./requirements.txt /benchmarker/requirements.txt 
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
-COPY main.py /vectorizer/main.py
+COPY main.py /benchmarker/main.py
 
 CMD [ "python", "main.py" ]

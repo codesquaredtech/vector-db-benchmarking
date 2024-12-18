@@ -89,5 +89,4 @@ def main():
 
 if __name__ == "__main__":
     logger = get_logger()
-    logger.info("Hello!")
     main()
