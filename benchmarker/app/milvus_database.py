@@ -1,4 +1,3 @@
-from time import sleep
 from app.vector_database import VectorDatabase
 from pymilvus import (
     connections,

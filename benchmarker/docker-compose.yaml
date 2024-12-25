@@ -13,6 +13,7 @@ services:
       - ./logs:/benchmarker/logs
       - ./app:/benchmarker/app
       - ./output:/benchmarker/output
+      - ./results:/benchmarker/results
     networks:
       - vector_db_testing
     command: ["python", "main.py"]

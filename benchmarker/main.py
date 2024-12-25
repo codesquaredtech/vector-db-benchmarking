@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+import psutil
 import datetime
 from deepface import DeepFace
 
@@ -13,7 +15,10 @@ from app.logger import get_logger
 from app.images import convert_bytes_to_image
 
 OUTPUT_FILE_PATH = "./output/embeddings_2024-12-17_09-53-28.parquet"
+VECTOR_STORING_BENCHMARKING_RESULTS_BASE_FILE_PATH = "./results/vector_storing_results_"
+
 COLLECTION_NAME = "faces_collection"
+NUM_ITERATIONS = 10
 
 
 def get_vector_database(db_type: str):
@@ -49,43 +54,93 @@ def process_input_image(image_to_compare_with_path):
     return image_embedding
 
 
-def insert_embeddings(db):
+def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     logger.info("Retrieving extracted embeddings")
     embeddings = retrieve_embeddings_from_parquet_file(OUTPUT_FILE_PATH)
     logger.info("Embeddings retrieved successfully")
 
-    logger.info("Connecting to the vector database")
-    db.connect()
-    db.drop_collection(COLLECTION_NAME)
-    logger.info("Successfully connected to the vector database")
+    benchmark_data = []
 
-    vector_db_initialisation_start_datetime = datetime.datetime.now()
-    logger.info(
-        f'Starting vector database initialisation at: {vector_db_initialisation_start_datetime.strftime("%Y-%m-%d_%H-%M-%S")}'
-    )
-    db.create_collection(COLLECTION_NAME)
+    for i in range(num_iterations):
+        logger.info(f"Starting benchmark iteration {i + 1}/{num_iterations}")
 
-    vector_db_initialisation_end_datetime = datetime.datetime.now()
-    logger.info(
-        f'Finished vector database initialisation at: {vector_db_initialisation_end_datetime.strftime("%Y-%m-%d_%H-%M-%S")}'
-    )
-    logger.info(
-        f"Total vector database initialisation time: {(vector_db_initialisation_end_datetime-vector_db_initialisation_start_datetime).total_seconds()}"
-    )
+        process = psutil.Process()
 
-    vector_db_insertion_start_datetime = datetime.datetime.now()
-    logger.info(
-        f'Starting vector database insertion at: {vector_db_insertion_start_datetime.strftime("%Y-%m-%d_%H-%M-%S")}'
-    )
-    db.insert(COLLECTION_NAME, embeddings)
+        logger.info("Connecting to the vector database")
+        db.connect()
+        db.drop_collection(COLLECTION_NAME)
+        logger.info("Successfully connected to the vector database")
 
-    vector_db_insertion_end_datetime = datetime.datetime.now()
-    logger.info(
-        f'Finished vector database insertion at: {vector_db_insertion_end_datetime.strftime("%Y-%m-%d_%H-%M-%S")}'
+        # Measure memory in MB
+        memory_before_init = process.memory_info().rss / (1024**2)
+        vector_db_initialisation_start = datetime.datetime.now()
+        db.create_collection(COLLECTION_NAME)
+        vector_db_initialisation_end = datetime.datetime.now()
+        memory_after_init = process.memory_info().rss / (1024**2)
+
+        initialisation_time = (
+            vector_db_initialisation_end - vector_db_initialisation_start
+        ).total_seconds()
+
+        memory_before_insert = process.memory_info().rss / (1024**2)
+        vector_db_insertion_start = datetime.datetime.now()
+        db.insert(COLLECTION_NAME, embeddings)
+        vector_db_insertion_end = datetime.datetime.now()
+        memory_after_insert = process.memory_info().rss / (1024**2)
+
+        insertion_time = (
+            vector_db_insertion_end - vector_db_insertion_start
+        ).total_seconds()
+
+        memory_usage_initialisation = memory_after_init - memory_before_init
+        memory_usage_insertion = memory_after_insert - memory_before_insert
+
+        logger.info(
+            f"Iteration {i + 1} - Initialisation Time: {initialisation_time}s, Insertion Time: {insertion_time}s, "
+            f"Memory Usage (Init): {memory_usage_initialisation} MB, Memory Usage (Insert): {memory_usage_insertion} MB"
+        )
+
+        benchmark_data.append(
+            {
+                "iteration": i + 1,
+                "initialisation_time": initialisation_time,
+                "insertion_time": insertion_time,
+                "memory_usage_initialisation": memory_usage_initialisation,
+                "memory_usage_insertion": memory_usage_insertion,
+            }
+        )
+
+    benchmark_df = pd.DataFrame(benchmark_data)
+    complete_file_path = (
+        VECTOR_STORING_BENCHMARKING_RESULTS_BASE_FILE_PATH
+        + f"_size_{len(embeddings)}__"
+        + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+        + ".csv"
     )
-    logger.info(
-        f"Total vector database insertion time: {(vector_db_insertion_end_datetime-vector_db_insertion_start_datetime).total_seconds()}"
-    )
+    benchmark_df.to_csv(complete_file_path, index=False)
+
+    initialisation_times = benchmark_df["initialisation_time"]
+    insertion_times = benchmark_df["insertion_time"]
+    memory_usage_initialisation = benchmark_df["memory_usage_initialisation"]
+    memory_usage_insertion = benchmark_df["memory_usage_insertion"]
+
+    stats = {
+        "initialisation_mean": np.mean(initialisation_times),
+        "initialisation_std": np.std(initialisation_times),
+        "insertion_mean": np.mean(insertion_times),
+        "insertion_std": np.std(insertion_times),
+        "initialisation_p90": np.percentile(initialisation_times, 90),
+        "insertion_p90": np.percentile(insertion_times, 90),
+        "memory_usage_init_mean": np.mean(memory_usage_initialisation),
+        "memory_usage_init_std": np.std(memory_usage_initialisation),
+        "memory_usage_insert_mean": np.mean(memory_usage_insertion),
+        "memory_usage_insert_std": np.std(memory_usage_insertion),
+    }
+
+    stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
+    stats_df.to_csv(complete_file_path, mode="a", header=False, index=False)
+
+    logger.info(f"Benchmark results saved to {complete_file_path}")
 
 
 def search_similar_embeddings(db, image_to_compare_with_path, search_params):
