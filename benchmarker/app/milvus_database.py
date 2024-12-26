@@ -51,6 +51,12 @@ class MilvusDatabase(VectorDatabase):
         collection = Collection(name=collection_name)
         collection.insert([ids, embeddings, image_paths])
 
+    def delete(self, collection_name: str):
+        collection = Collection(name=collection_name)
+        collection.load()
+        collection.delete(expr="id >= 0")
+        # TODO: Or drop_collection ?
+
     def search(self, collection_name: str, embedding: list, params: dict):
         collection = Collection(name=collection_name)
         collection.load()

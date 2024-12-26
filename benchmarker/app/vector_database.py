@@ -43,3 +43,8 @@ class VectorDatabase(ABC):
     @handle_exceptions(logger)
     def search(self, collection_name: str, embedding: list, params: dict):
         pass
+
+    @abstractmethod
+    @handle_exceptions(logger)
+    def delete(self, collection_name: str):
+        pass

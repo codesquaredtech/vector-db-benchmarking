@@ -100,11 +100,22 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
             f"Memory Usage (Init): {memory_usage_initialisation} MB, Memory Usage (Insert): {memory_usage_insertion} MB"
         )
 
+        vector_db_deletion_start = datetime.datetime.now()
+        db.delete(COLLECTION_NAME)
+        vector_db_deletion_end = datetime.datetime.now()
+
+        deletion_time = (
+            vector_db_deletion_end - vector_db_deletion_start
+        ).total_seconds()
+
+        logger.info(f"Iteration {i + 1} - Deletion Time: {deletion_time}s")
+
         benchmark_data.append(
             {
                 "iteration": i + 1,
                 "initialisation_time": initialisation_time,
                 "insertion_time": insertion_time,
+                "deletion_time": deletion_time,
                 "memory_usage_initialisation": memory_usage_initialisation,
                 "memory_usage_insertion": memory_usage_insertion,
             }
@@ -123,14 +134,24 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     insertion_times = benchmark_df["insertion_time"]
     memory_usage_initialisation = benchmark_df["memory_usage_initialisation"]
     memory_usage_insertion = benchmark_df["memory_usage_insertion"]
+    deletion_times = benchmark_df["deletion_time"]
 
     stats = {
         "initialisation_mean": np.mean(initialisation_times),
         "initialisation_std": np.std(initialisation_times),
         "insertion_mean": np.mean(insertion_times),
         "insertion_std": np.std(insertion_times),
+        "deletion_mean": np.mean(deletion_times),
+        "deletion_std": np.std(deletion_times),
         "initialisation_p90": np.percentile(initialisation_times, 90),
         "insertion_p90": np.percentile(insertion_times, 90),
+        "deletion_p90": np.percentile(deletion_times, 90),
+        "initialisation_p95": np.percentile(initialisation_times, 95),
+        "insertion_p95": np.percentile(insertion_times, 95),
+        "deletion_p95": np.percentile(deletion_times, 95),
+        "initialisation_p99": np.percentile(initialisation_times, 99),
+        "insertion_p99": np.percentile(insertion_times, 99),
+        "deletion_p99": np.percentile(deletion_times, 99),
         "memory_usage_init_mean": np.mean(memory_usage_initialisation),
         "memory_usage_init_std": np.std(memory_usage_initialisation),
         "memory_usage_insert_mean": np.mean(memory_usage_insertion),
