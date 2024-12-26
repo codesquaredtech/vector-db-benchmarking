@@ -2,6 +2,9 @@ import pandas as pd
 import numpy as np
 import psutil
 import datetime
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from deepface import DeepFace
 
 # Milvus
@@ -15,7 +18,11 @@ from app.logger import get_logger
 from app.images import convert_bytes_to_image
 
 OUTPUT_FILE_PATH = "./output/embeddings_2024-12-17_09-53-28.parquet"
-VECTOR_STORING_BENCHMARKING_RESULTS_BASE_FILE_PATH = "./results/vector_storing_results_"
+VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH = (
+    "./results/vector_storing_and_deletion_results_"
+)
+VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH = "./results/vector_search_results_"
+IMAGE_TO_COMPARE_WITH_PATH = "./app/test-benchmarking-face.jpg"
 
 COLLECTION_NAME = "faces_collection"
 NUM_ITERATIONS = 10
@@ -123,7 +130,7 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
 
     benchmark_df = pd.DataFrame(benchmark_data)
     complete_file_path = (
-        VECTOR_STORING_BENCHMARKING_RESULTS_BASE_FILE_PATH
+        VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH
         + f"_size_{len(embeddings)}__"
         + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
         + ".csv"
@@ -164,25 +171,86 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     logger.info(f"Benchmark results saved to {complete_file_path}")
 
 
-def search_similar_embeddings(db, image_to_compare_with_path, search_params):
+def search_embedding(db, embedding, search_params):
+    start_time = time.perf_counter()
+    db.search(COLLECTION_NAME, embedding, search_params)
+    end_time = time.perf_counter()
+    return end_time - start_time
+
+
+def search_similar_embeddings(
+    db,
+    image_to_compare_with_path,
+    search_params,
+    num_threads=10,
+    num_iterations=100,
+):
     logger.info(f"Processing image: {image_to_compare_with_path}")
     image_embedding = process_input_image(image_to_compare_with_path)
-    logger.info(f"Image: {image_to_compare_with_path} converted to the embedding")
+    logger.info(f"Image: {image_to_compare_with_path} converted to embedding.")
 
-    similar_embedding_search_start_time = datetime.datetime.now()
-    logger.info(
-        f'Starting similar embedding search at: {similar_embedding_search_start_time.strftime("%Y-%m-%d_%H-%M-%S")}'
-    )
-    similar_embeddings = db.search(COLLECTION_NAME, image_embedding, search_params)
+    benchmark_data = []
 
-    similar_embedding_search_end_time = datetime.datetime.now()
-    logger.info(f"Similar embeddings: {similar_embeddings}")
-    logger.info(
-        f'Finished similar embedding search at: {similar_embedding_search_end_time.strftime("%Y-%m-%d_%H-%M-%S")}'
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [
+            executor.submit(search_embedding, db, image_embedding, search_params)
+            for _ in range(num_iterations)
+        ]
+
+        start_time = time.perf_counter()
+        successful_requests = 0
+
+        for i, future in enumerate(as_completed(futures)):
+            try:
+                search_time = future.result()
+                successful_requests += 1
+
+                benchmark_data.append(
+                    {
+                        "iteration": i + 1,
+                        "search_time": search_time,
+                    }
+                )
+                logger.info(f"Iteration {i + 1} - Search Time: {search_time}s")
+            except Exception as e:
+                logger.error(f"Error during search on iteration {i + 1}: {e}")
+
+        end_time = time.perf_counter()
+
+    elapsed_time = end_time - start_time
+    rps = successful_requests / elapsed_time if elapsed_time > 0 else 0
+
+    search_times = [data["search_time"] for data in benchmark_data]
+
+    stats = {
+        "search_time_mean": np.mean(search_times),
+        "search_time_std": np.std(search_times),
+        "search_time_p90": np.percentile(search_times, 90),
+        "search_time_p95": np.percentile(search_times, 95),
+        "search_time_p99": np.percentile(search_times, 99),
+        "rps": rps,
+        "total_time": elapsed_time,
+        "successful_requests": successful_requests,
+    }
+
+    benchmark_df = pd.DataFrame(benchmark_data)
+    stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
+
+    complete_file_path = (
+        f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_"
+        + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        + ".csv"
     )
+
+    benchmark_df.to_csv(complete_file_path, index=False)
+    stats_df.to_csv(complete_file_path, mode="a", header=False, index=False)
+
+    logger.info(f"Search benchmark results and stats saved to {complete_file_path}")
     logger.info(
-        f"Total similar embedding search time: {(similar_embedding_search_end_time-similar_embedding_search_start_time).total_seconds()}"
+        f"RPS: {rps}, Total Time: {elapsed_time}s, Successful Requests: {successful_requests}"
     )
+
+    return stats
 
 
 if __name__ == "__main__":
@@ -190,7 +258,15 @@ if __name__ == "__main__":
 
     db = get_vector_database("MILVUS")
 
+    """
+    Insert + Delete benchmarking
+    """
+
     insert_embeddings(db)
+
+    """
+    Search benchmarking
+    """
 
     search_params = search_params = {
         "anns_field": "embedding",
@@ -200,4 +276,10 @@ if __name__ == "__main__":
         "output_fields": ["id", "image_path"],
     }
 
-    search_similar_embeddings(db, "./app/test-benchmarking-face.jpg", search_params)
+    search_similar_embeddings(
+        db,
+        IMAGE_TO_COMPARE_WITH_PATH,
+        search_params,
+        num_threads=50,
+        num_iterations=100,
+    )
