@@ -4,3 +4,5 @@ mediapipe==0.10.14
 pymilvus==2.4.6
 pandas==2.2.3
 pyarrow==18.1.0
+psutil==6.1.1
+scikit-learn==1.6.0

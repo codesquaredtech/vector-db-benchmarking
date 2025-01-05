@@ -1,5 +1,4 @@
-from time import sleep
-from app.vector_database import VectorDatabase
+from app.database.vector_database import VectorDatabase
 from pymilvus import (
     connections,
     FieldSchema,
@@ -8,6 +7,9 @@ from pymilvus import (
     Collection,
     utility,
 )
+from app.logger import get_logger
+
+logger = get_logger()
 
 
 class MilvusDatabase(VectorDatabase):
@@ -52,6 +54,12 @@ class MilvusDatabase(VectorDatabase):
         collection = Collection(name=collection_name)
         collection.insert([ids, embeddings, image_paths])
 
+    def delete(self, collection_name: str):
+        collection = Collection(name=collection_name)
+        collection.load()
+        collection.delete(expr="id >= 0")
+        # TODO: Or drop_collection ?
+
     def search(self, collection_name: str, embedding: list, params: dict):
         collection = Collection(name=collection_name)
         collection.load()
@@ -61,24 +69,40 @@ class MilvusDatabase(VectorDatabase):
             "params": params.get("index_params", {"ef": 64}),
         }
 
-        results = collection.search(
-            data=[embedding],
-            anns_field=params["anns_field"],
-            param=search_params,
-            limit=params.get("limit", 10),
-            expr=params.get("expr"),
-            output_fields=params.get("output_fields", []),
-        )
+        limit = params.get("limit")
+        """
+        offset - Number of entities to skip during the search.
+        The sum of this parameter and limit of the search method should be less than 16384.
+        """
+        if limit is None:
+            limit = 16000
 
-        # Parse and return results
+        search_args = {
+            "data": [embedding],
+            "anns_field": params["anns_field"],
+            "param": search_params,
+            "limit": limit,
+            "expr": params.get("expr"),
+            "output_fields": params.get("output_fields", []),
+        }
+
+        raw_results = collection.search(**search_args)
+
+        threshold = params.get("threshold", 0.5)
+
+        filtered_results = []
+        for result in raw_results:
+            filtered_result = [item for item in result if item.score >= threshold]
+            filtered_results.append(filtered_result)
+
+        return filtered_results
+
+    def parse_search_results(self, results: list):
         similar_embeddings = []
         for result in results:
             for hit in result:
-                similar_embeddings.append(
-                    {
-                        "id": hit.entity.get("id"),
-                        "image_path": hit.entity.get("image_path"),
-                        "score": hit.score,
-                    }
+                logger.info(
+                    f"ID: {hit.entity.get("id")}, Image path: {hit.entity.get("image_path")}, Score: {hit.score}"
                 )
+                similar_embeddings.append(hit.entity.get("image_path").split("/")[-1])
         return similar_embeddings
