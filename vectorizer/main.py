@@ -2,6 +2,7 @@ from itertools import chain
 from multiprocessing import Pool
 
 import pandas as pd
+import json
 from deepface import DeepFace
 
 from app.face_detection import (
@@ -14,7 +15,9 @@ from app.logger import get_logger
 
 SUPPORTED_IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".bmp", ".gif")
 REFERENT_IMAGE_DIRECTORY = "./images/NORTHSTORM/2024/"
+IMAGE_TO_COMPARE_WITH_PATH = "./images/comparison/test_1.jpg"
 OUTPUT_FILE_PATH = "./output/embeddings_{current_datetime}.parquet"
+OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH = "./output/embedding_compare_with.csv"
 CHUNK_SIZE = 1
 POOL_PROCESSES = 1
 
@@ -66,9 +69,27 @@ def process_images_in_directory(directory_path, current_datetime, chunk_size=100
         )
 
 
+def process_comparison_image():
+    embedding_with_path = process_image(IMAGE_TO_COMPARE_WITH_PATH)[0]
+    df = pd.DataFrame(
+        [
+            {
+                "embedding": json.dumps(embedding_with_path["embedding"].tolist()),
+                "image_path": embedding_with_path["image_path"],
+            }
+        ]
+    )
+
+    df.to_csv(OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH, index=False)
+    logger.info(
+        f"Saved comparison embedding with path to {OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH}"
+    )
+
+
 def main():
     import datetime
 
+    """
     start_datetime = datetime.datetime.now()
     logger.info(
         f'Starting vectorizing at: {start_datetime.strftime("%Y-%m-%d_%H-%M-%S")}'
@@ -85,6 +106,10 @@ def main():
     logger.info(
         f"Total processing time: {(end_datetime-start_datetime).total_seconds()}"
     )
+    """
+    logger.info("Starting vectorisation of the comparison image...")
+    process_comparison_image()
+    logger.info("Successfully vectorised the comparison image")
 
 
 if __name__ == "__main__":

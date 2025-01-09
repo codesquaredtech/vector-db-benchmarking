@@ -12,7 +12,7 @@ services:
       - ./main.py:/benchmarker/main.py
       - ./logs:/benchmarker/logs
       - ./app:/benchmarker/app
-      - ./output:/benchmarker/output
+      - ./input:/benchmarker/input
       - ./results:/benchmarker/results
     networks:
       - vector_db_testing
