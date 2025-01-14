@@ -28,8 +28,9 @@ VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH = "./results/vector_search_res
 EMBEDDING_TO_COMPARE_WITH_PATH = "./app/search_data/embedding_compare_with.csv"
 LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 
-COLLECTION_NAME = "faces_collection"
+COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
+DATABASE_FOR_BENCHMARKING = "WEAVIATE"
 
 
 def get_vector_database(db_type: str):
@@ -133,7 +134,7 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     benchmark_df = pd.DataFrame(benchmark_data)
     complete_file_path = (
         VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH
-        + f"_size_{len(embeddings)}__"
+        + f"_size_{len(embeddings)}__database_{DATABASE_FOR_BENCHMARKING}"
         + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
         + ".csv"
     )
@@ -264,7 +265,7 @@ def search_similar_embeddings(
     stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
 
     complete_file_path = (
-        f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_"
+        f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_database_{DATABASE_FOR_BENCHMARKING}"
         + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         + ".csv"
     )
@@ -287,10 +288,7 @@ Modify code below for the purposes of other vector database benchmarking.
 if __name__ == "__main__":
     logger = get_logger()
 
-    db = get_vector_database("WEAVIATE")
-    db.connect()
-
-    '''
+    db = get_vector_database(DATABASE_FOR_BENCHMARKING)
     """
     Insert + Delete benchmarking
     """
@@ -301,14 +299,7 @@ if __name__ == "__main__":
     Search benchmarking
     """
 
-    search_params = search_params = {
-        "anns_field": "embedding",
-        "metric_type": "COSINE",
-        "index_params": {"ef": 64},
-        "limit": None,
-        "threshold": 0.8,
-        "output_fields": ["id", "image_path"],
-    }
+    search_params = {"certainty": 0.8, "limit": 10}
 
     search_similar_embeddings(
         db,
@@ -316,34 +307,3 @@ if __name__ == "__main__":
         num_threads=50,
         num_iterations=100,
     )
-    '''
-    '''
-    # MILVUS EXAMPLE CODE
-    db = get_vector_database("MILVUS")
-
-    """
-    Insert + Delete benchmarking
-    """
-
-    insert_embeddings(db)
-
-    """
-    Search benchmarking
-    """
-
-    search_params = search_params = {
-        "anns_field": "embedding",
-        "metric_type": "COSINE",
-        "index_params": {"ef": 64},
-        "limit": None,
-        "threshold": 0.8,
-        "output_fields": ["id", "image_path"],
-    }
-
-    search_similar_embeddings(
-        db,
-        search_params,
-        num_threads=50,
-        num_iterations=100,
-    )
-    '''
