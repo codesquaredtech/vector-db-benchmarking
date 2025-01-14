@@ -8,7 +8,7 @@ formatter = logging.Formatter(
     "[%(asctime)s| %(levelname)s| %(processName)s] %(message)s"
 )
 current_datetime = date = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-handler = logging.FileHandler(f"/benchmarker/logs/{current_datetime}_selfiender.log")
+handler = logging.FileHandler(f"/benchmarker/logs/{current_datetime}_benchmarker.log")
 handler.setFormatter(formatter)
 
 if not len(logger.handlers):

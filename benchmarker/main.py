@@ -3,20 +3,18 @@ import numpy as np
 import psutil
 import datetime
 import time
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from sklearn.metrics import precision_score, recall_score, f1_score
-from deepface import DeepFace
+
+from app.logger import get_logger
 
 # Milvus
 from app.database.milvus_database import MilvusDatabase
-from app.face_detection import (
-    extract_faces_from_deepface_detections,
-    initialise_face_embedder,
-    create_embedding,
-)
-from app.logger import get_logger
-from app.images import convert_bytes_to_image
+
+# Weaviate
+from app.database.weaviate_database import WeaviateDatabase
 
 """
 Modify global variables if needed.
@@ -27,16 +25,19 @@ VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH = (
     "./results/vector_storing_and_deletion_results_"
 )
 VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH = "./results/vector_search_results_"
-IMAGE_TO_COMPARE_WITH_PATH = "./app/search_data/test_1.jpg"
+EMBEDDING_TO_COMPARE_WITH_PATH = "./app/search_data/embedding_compare_with.csv"
 LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 
-COLLECTION_NAME = "faces_collection"
+COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
+DATABASE_FOR_BENCHMARKING = "WEAVIATE"
 
 
 def get_vector_database(db_type: str):
     if db_type == "MILVUS":
         return MilvusDatabase()
+    elif db_type == "WEAVIATE":
+        return WeaviateDatabase()
     else:
         raise ValueError(f"Unsupported vector database: {db_type}")
 
@@ -51,20 +52,16 @@ def retrieve_embeddings_from_parquet_file(file_path):
         )
 
 
-def process_input_image(image_to_compare_with_path):
-    face_embedder = initialise_face_embedder()
+def retrieve_embedding_from_csv_file():
+    df = pd.read_csv(EMBEDDING_TO_COMPARE_WITH_PATH)
 
-    numpy_image, _ = convert_bytes_to_image(image_to_compare_with_path)
-    detected_faces = DeepFace.extract_faces(
-        img_path=numpy_image,
-        enforce_detection=False,
-        detector_backend="retinaface",
-        align=True,
-    )
-    face_images = extract_faces_from_deepface_detections(detected_faces)
+    df["embedding"] = df["embedding"].apply(lambda x: np.array(json.loads(x)))
 
-    image_embedding = create_embedding(face_images[0], face_embedder)
-    return image_embedding
+    # Always one row only (one face)
+    for _, row in df.iterrows():
+        embedding_array = row["embedding"]
+        image_path = row["image_path"]
+    return embedding_array, image_path
 
 
 def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
@@ -137,7 +134,7 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     benchmark_df = pd.DataFrame(benchmark_data)
     complete_file_path = (
         VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH
-        + f"_size_{len(embeddings)}__"
+        + f"_size_{len(embeddings)}__database_{DATABASE_FOR_BENCHMARKING}"
         + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
         + ".csv"
     )
@@ -179,7 +176,7 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     db.insert(COLLECTION_NAME, embeddings)
 
 
-def search_embedding(db, embedding, search_params):
+def search_embedding(db, embedding, search_params, image_path):
     start_time = time.perf_counter()
     raw_predicted_results = db.search(COLLECTION_NAME, embedding, search_params)
     end_time = time.perf_counter()
@@ -188,7 +185,7 @@ def search_embedding(db, embedding, search_params):
     parsed_predicted_results = db.parse_search_results(raw_predicted_results)
 
     real_results = pd.read_csv(LABELED_DATASET_PATH)
-    target_picture = IMAGE_TO_COMPARE_WITH_PATH.split("/")[-1]
+    target_picture = image_path.split("/")[-1]
     real_results[f"predicted_{target_picture}"] = real_results.apply(
         lambda row: 1 if row["picture_name"] in parsed_predicted_results else 0,
         axis=1,
@@ -208,20 +205,18 @@ def search_embedding(db, embedding, search_params):
 
 def search_similar_embeddings(
     db,
-    image_to_compare_with_path,
     search_params,
     num_threads=10,
     num_iterations=100,
 ):
-    logger.info(f"Processing image: {image_to_compare_with_path}")
-    image_embedding = process_input_image(image_to_compare_with_path)
-    logger.info(f"Image: {image_to_compare_with_path} converted to embedding.")
-
+    image_embedding, image_path = retrieve_embedding_from_csv_file()
     benchmark_data = []
 
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         futures = [
-            executor.submit(search_embedding, db, image_embedding, search_params)
+            executor.submit(
+                search_embedding, db, image_embedding, search_params, image_path
+            )
             for _ in range(num_iterations)
         ]
 
@@ -270,7 +265,7 @@ def search_similar_embeddings(
     stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
 
     complete_file_path = (
-        f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_"
+        f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_database_{DATABASE_FOR_BENCHMARKING}"
         + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         + ".csv"
     )
@@ -293,8 +288,7 @@ Modify code below for the purposes of other vector database benchmarking.
 if __name__ == "__main__":
     logger = get_logger()
 
-    db = get_vector_database("MILVUS")
-
+    db = get_vector_database(DATABASE_FOR_BENCHMARKING)
     """
     Insert + Delete benchmarking
     """
@@ -305,18 +299,10 @@ if __name__ == "__main__":
     Search benchmarking
     """
 
-    search_params = search_params = {
-        "anns_field": "embedding",
-        "metric_type": "COSINE",
-        "index_params": {"ef": 64},
-        "limit": None,
-        "threshold": 0.8,
-        "output_fields": ["id", "image_path"],
-    }
+    search_params = {"certainty": 0.8, "limit": 10}
 
     search_similar_embeddings(
         db,
-        IMAGE_TO_COMPARE_WITH_PATH,
         search_params,
         num_threads=50,
         num_iterations=100,

@@ -4,6 +4,9 @@ docker network create vector_db_testing
 echo "Starting milvus"
 docker compose -f "./milvus/docker-compose.yaml" up -d
 
+echo "Starting weaviate"
+docker compose -f "./weaviate/docker-compose.yaml" up -d
+
 sleep 30
 
 echo "Starting vectorizer"

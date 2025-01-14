@@ -1,0 +1,23 @@
+'''
+logger = get_logger()
+
+db = get_vector_database(BENCHMARKED_DATABASE)
+"""
+Insert + Delete benchmarking
+"""
+
+insert_embeddings(db)
+
+"""
+Search benchmarking
+"""
+
+search_params = {"certainty": 0.8, "limit": 10}
+
+search_similar_embeddings(
+    db,
+    search_params,
+    num_threads=50,
+    num_iterations=100,
+)
+'''
