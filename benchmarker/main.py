@@ -1,20 +1,20 @@
-import pandas as pd
-import numpy as np
-import psutil
 import datetime
-import time
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from sklearn.metrics import precision_score, recall_score, f1_score
-
-from app.logger import get_logger
+import numpy as np
+import pandas as pd
+import psutil
+from sklearn.metrics import f1_score, precision_score, recall_score
 
 # Milvus
 from app.database.milvus_database import MilvusDatabase
-
+# PGVector
+from app.database.pgvector_database import PGVectorDatabase
 # Weaviate
 from app.database.weaviate_database import WeaviateDatabase
+from app.logger import get_logger
 
 """
 Modify global variables if needed.
@@ -30,7 +30,7 @@ LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 
 COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
-DATABASE_FOR_BENCHMARKING = "WEAVIATE"
+DATABASE_FOR_BENCHMARKING = "PGVECTOR"
 
 
 def get_vector_database(db_type: str):
@@ -38,6 +38,8 @@ def get_vector_database(db_type: str):
         return MilvusDatabase()
     elif db_type == "WEAVIATE":
         return WeaviateDatabase()
+    elif db_type == "PGVECTOR":
+        return PGVectorDatabase()
     else:
         raise ValueError(f"Unsupported vector database: {db_type}")
 
