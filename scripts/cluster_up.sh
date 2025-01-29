@@ -12,6 +12,11 @@ start_weavite() {
     docker compose -f "./weaviate/docker-compose.yaml" up -d
 }
 
+start_elasticsearch() {
+    echo "Starting elasticsearch"
+    docker compose -f "./elasticsearch/docker-compose.yaml" up -d
+}
+
 start_qdrant() {
     echo "Starting Qdrant service..."
     docker compose -f "./qdrant/docker-compose.yaml" up -d
@@ -32,6 +37,7 @@ MV=false
 WV=false
 PG=false
 QD=false
+ES=false
 ALL=false
 
 while [[ "$#" -gt 0 ]]; do
@@ -48,6 +54,9 @@ while [[ "$#" -gt 0 ]]; do
         -qd)
             QD=true
             ;;
+        -es)
+            ES=true
+            ;;
         -all)
             ALL=true
             ;;
@@ -61,7 +70,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Check if any service-specific flag is true
-if ! $MV && ! $WV && ! $PG && ! $QD; then
+if ! $MV && ! $WV && ! $PG && ! $QD ! $ES; then
     echo "No service-specific flags provided. Running all."
     ALL=true
 fi
@@ -86,6 +95,9 @@ else
     fi
     if $QD; then
         start_qdrant
+    fi
+    if $ES; then
+        start_elasticsearch
     fi
 fi
 
