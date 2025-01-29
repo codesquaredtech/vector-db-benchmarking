@@ -12,6 +12,8 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from app.database.milvus_database import MilvusDatabase
 # PGVector
 from app.database.pgvector_database import PGVectorDatabase
+# Qdrant
+from app.database.qdrant_database import QdrantDatabase
 # Weaviate
 from app.database.weaviate_database import WeaviateDatabase
 from app.logger import get_logger
@@ -30,7 +32,7 @@ LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 
 COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
-DATABASE_FOR_BENCHMARKING = "PGVECTOR"
+DATABASE_FOR_BENCHMARKING = "QDRANT"
 
 
 def get_vector_database(db_type: str):
@@ -40,6 +42,8 @@ def get_vector_database(db_type: str):
         return WeaviateDatabase()
     elif db_type == "PGVECTOR":
         return PGVectorDatabase()
+    elif db_type == "QDRANT":
+        return QdrantDatabase()
     else:
         raise ValueError(f"Unsupported vector database: {db_type}")
 
