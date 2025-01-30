@@ -28,7 +28,7 @@ from app.database.elasticsearch_database import ElasticsearchDatabase
 Modify global variables if needed.
 """
 
-INPUT_FILE_PATH = "./input/embeddings_2024-12-17_09-53-28.parquet"
+INPUT_FILE_PATH = "./input/embeddings_2025-01-30_02-12-16.parquet"
 VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH = (
     "./results/vector_storing_and_deletion_results_"
 )
@@ -38,7 +38,7 @@ LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 
 COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
-DATABASE_FOR_BENCHMARKING = "QDRANT"
+DATABASE_FOR_BENCHMARKING = "ELASTICSEARCH"
 
 
 def get_vector_database(db_type: str):

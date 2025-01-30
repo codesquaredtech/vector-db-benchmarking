@@ -13,7 +13,7 @@ class ElasticsearchDatabase(VectorDatabase):
     def connect(self, host="elasticsearch_db", port=9200):
 
         try:
-            self.client = Elasticsearch([{'host': host, 'port': port, 'scheme': 'https'}])
+            self.client = Elasticsearch([{'host': host, 'port': port, 'scheme': 'http'}])
             if not self.client.ping():
                 raise ConnectionError(f"Could not connect to Elasticsearch at {host}:{port}")
             
@@ -34,11 +34,12 @@ class ElasticsearchDatabase(VectorDatabase):
             logger.error("Elasticsearch client is not connected.")
             return
 
-        if self.client.indices.exists(index=collection_name):
-            self.client.indices.delete(index=collection_name)
+        index_name = collection_name.lower() #Has to be lowercase for es
+        if self.client.indices.exists(index=index_name):
+            self.client.indices.delete(index=index_name)
             logger.info(f"Index '{collection_name}' deleted successfully.") 
         else:
-            logger.warning(f"Index '{collection_name}' does not exist. Skipping drop.")
+            logger.info(f"Index '{collection_name}' does not exist. Skipping drop.")
 
 
     def create_collection(self, collection_name: str):
@@ -47,29 +48,23 @@ class ElasticsearchDatabase(VectorDatabase):
             logger.error("Elasticsearch client is not connected.")
             return
         
+        index_name = collection_name.lower()
+
         mapping = {
             "mappings": {
                 "properties": {
                     "id": {"type": "long"},
                     "embedding": {
                         "type": "dense_vector",
-                        "dims": 1280,
-                        "index": True,
-                        "similarity": "cosine",
-                        "knn": True, #TODO: check with Teo
-                        "method": {
-                            "name": "hnsw",
-                            "space_type": "cosinesimil",
-                            "engine": "nmslib"  # TODO faiss?
-                        }
+                        "dims": 1280
                     },
-                    "image_path": {"type": "keyword"} #TODO: maybe text? do i need exact matches
+                    "image_path": {"type": "keyword"} #TODO: maybe text? do i need exact matches?
                 }
             }
         }
 
-        if not self.client.indices.exists(index=collection_name):
-            self.client.indices.create(index=collection_name, body=mapping)
+        if not self.client.indices.exists(index=index_name):
+            self.client.indices.create(index=index_name, body=mapping)
             logger.info(f"Index '{collection_name}' created successfully.")
         else:
             logger.warning(f"Index '{collection_name}' already exists. Skipping index creation.")
@@ -84,15 +79,16 @@ class ElasticsearchDatabase(VectorDatabase):
         if data.empty:
             logger.warning("Data is empty. Skipping insert.")
 
+        index_name = collection_name.lower()
         rows = data.to_dict(orient="records")
         ids = data.index.tolist()
 
         actions = [
             {
-                "_index": collection_name,
+                "_index": index_name,
                 "_id": ids[i],
                 "_source": {
-                    "embedding": row["embedding"], #.tolist() if hasattr(row["embedding"], 'tolist') else row["embedding"],
+                    "embedding": row["embedding"],
                     "image_path": row["image_path"]
                 }
             }
@@ -108,7 +104,7 @@ class ElasticsearchDatabase(VectorDatabase):
             logger.error("Elasticsearch client is not connected.")
             return
         
-        self.client.delete_by_query(index=collection_name, body={"query": {"match_all": {}}})
+        self.client.delete_by_query(index=collection_name.lower(), body={"query": {"match_all": {}}})
 
 
     def search(self, collection_name: str, embedding: list, params: dict):
@@ -117,22 +113,34 @@ class ElasticsearchDatabase(VectorDatabase):
             logger.error("Elasticsearch client is not connected.")
             return []
 
+        index_name = collection_name.lower()
         limit = params.get("limit", 16000)
         certainty = params.get("certainty", 0.5)
         results = []
 
+
         query = {
-            "knn": {
-                "field": "embedding",
-                "query_vector": embedding,
-                "k": limit,
-                "num_candidates": limit * 10
-            },
-            "_source": True,
+            "script_score": {
+                "query" : {
+                    "match_all": {}
+                },
+                "script": {
+                    "source": "cosineSimilarity(params.queryVector, 'embedding') + 1.0",
+                    "params": {
+                        "queryVector": embedding
+                    }
+                }
+            }
+        }
+
+        body={
+            "size": limit,
+            "query": query,
+            "_source": {"includes": ["title", "abstract"]}
         }
 
         try:
-            response = self.client.search(index=collection_name, body=query)
+            response = self.client.search(index=index_name, body=body)
 
             results = [
                 {

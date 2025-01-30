@@ -8,4 +8,4 @@ SQLAlchemy==2.0.37
 psycopg2-binary==2.9.10
 pgvector==0.3.6
 qdrant-client==1.13.2
-elasticsearch==8.6.2
+elasticsearch==8.17.1

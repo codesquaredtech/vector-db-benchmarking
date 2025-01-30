@@ -5,7 +5,7 @@ networks:
 
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.6.2
+    image: elasticsearch:8.17.1
     container_name: elasticsearch_db
     environment:
       - discovery.type=single-node
