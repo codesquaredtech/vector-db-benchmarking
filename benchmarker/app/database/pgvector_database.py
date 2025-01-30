@@ -83,7 +83,7 @@ class PGVectorDatabase(VectorDatabase):
 
         search_string = f"""SELECT f.image_path, f.embedding <=> %s as score
 FROM "{collection_name}" f
-WHERE f.embedding <=> %s < {params.get('certainty', 0)}
+WHERE f.embedding <=> %s >= {params.get('certainty', 0)}
 ORDER BY f.embedding <=> %s DESC
 LIMIT {params.get('limit', 1600)}"""
 
