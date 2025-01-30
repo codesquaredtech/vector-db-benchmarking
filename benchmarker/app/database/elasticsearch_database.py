@@ -53,12 +53,11 @@ class ElasticsearchDatabase(VectorDatabase):
         mapping = {
             "mappings": {
                 "properties": {
-                    "id": {"type": "long"},
                     "embedding": {
                         "type": "dense_vector",
                         "dims": 1280
                     },
-                    "image_path": {"type": "keyword"} #TODO: maybe text? do i need exact matches?
+                    "image_path": {"type": "keyword"}
                 }
             }
         }
@@ -136,7 +135,7 @@ class ElasticsearchDatabase(VectorDatabase):
         body={
             "size": limit,
             "query": query,
-            "_source": {"includes": ["title", "abstract"]}
+            "_source": {"includes": ["image_path"]}
         }
 
         try:
@@ -144,7 +143,6 @@ class ElasticsearchDatabase(VectorDatabase):
 
             results = [
                 {
-                    "id": hit["_id"],
                     **hit["_source"],
                     "score": hit["_score"]
                 }
@@ -168,11 +166,10 @@ class ElasticsearchDatabase(VectorDatabase):
         similar_embeddings = []
         
         for result in results:
-            image_path = result.get("image_path", "")
-            doc_id = result.get("id", result["_id"])
-            score = result.get("score", 0)
+            image_path = result["image_path"]
+            score = result["score"]
 
-            logger.info(f"ID: {doc_id}, Image path: {image_path}, Score: {score}")
+            logger.info(f"Image path: {image_path}, Score: {score}")
 
             if image_path:
                 similar_embeddings.append(image_path.split("/")[-1])

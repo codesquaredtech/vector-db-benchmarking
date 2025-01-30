@@ -104,8 +104,8 @@ fi
 echo "Sleeping 30 seconds while everything is up and running."
 sleep 30
 
-echo "Starting vectorizer"
-docker compose -f "./vectorizer/docker-compose.yaml" up -d
+# echo "Starting vectorizer"
+# docker compose -f "./vectorizer/docker-compose.yaml" up -d
 
 echo "Starting benchmarker"
 docker compose -f "./benchmarker/docker-compose.yaml" up -d
