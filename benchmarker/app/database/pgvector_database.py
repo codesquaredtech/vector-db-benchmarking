@@ -22,7 +22,6 @@ class PGVectorDatabase(VectorDatabase):
             logger.info("Connection successful.")
         except Exception as e:
             logger.error(f"Error connecting to the database: {e}")
-        pass
 
     def drop_collection(self, collection_name: str):
         with self.connection.cursor() as cur:
@@ -81,18 +80,32 @@ class PGVectorDatabase(VectorDatabase):
     def search(self, collection_name: str, embedding: list, params: dict):
         results = []
 
-        search_string = f"""SELECT f.image_path, f.embedding <=> %s as score
-FROM "{collection_name}" f
-WHERE f.embedding <=> %s < {params.get('certainty', 0)}
-ORDER BY f.embedding <=> %s DESC
-LIMIT {params.get('limit', 1600)}"""
+        search_string = f"""
+with image_score as (
+	select f.image_path, (1 - (f.embedding <=> %s)) as score
+	from "{collection_name}" f
+)
+select image_path, score
+from image_score
+where score >= {params.get('certainty', 0)}
+order by score desc
+limit {params.get('limit', 1600)};
+"""
 
         try:
             with self.connection.cursor() as cur:
-                cur.execute(search_string, (embedding, embedding, embedding))
+                cur.execute(search_string, (embedding,))
                 results = cur.fetchall()
+                logger.info('#' * 25)
+                logger.info("Executed Query:")
+                logger.info(cur.query)     
+                logger.info('-' * 15)
+                logger.info('Fetched Results:')
+                logger.info(results)
+                self.connection.commit()
         except Exception as e:
             logger.error(f"Error searching data: {e}")
+            self.connection.rollback()
 
         return results
 

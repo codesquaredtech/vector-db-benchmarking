@@ -34,7 +34,6 @@ COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
 DATABASE_FOR_BENCHMARKING = "QDRANT"
 
-
 def get_vector_database(db_type: str):
     if db_type == "MILVUS":
         return MilvusDatabase()
