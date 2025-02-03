@@ -9,3 +9,4 @@ psycopg2-binary==2.9.10
 pgvector==0.3.6
 qdrant-client==1.13.2
 elasticsearch==8.17.1
+chromadb ==0.6.3

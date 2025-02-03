@@ -31,6 +31,10 @@ start_pgvector() {
     docker exec -it pgvector_db bash -c "/config/init.sh"
 }
 
+start_chroma() {
+    echo "Starting Chroma service..."
+    docker compose -f "./chroma/docker-compose.yaml" up -d
+}
 
 # Flags initialization
 MV=false
@@ -38,6 +42,7 @@ WV=false
 PG=false
 QD=false
 ES=false
+CH=false
 ALL=false
 
 while [[ "$#" -gt 0 ]]; do
@@ -53,6 +58,8 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         -qd)
             QD=true
+        -ch)
+            CH=true
             ;;
         -es)
             ES=true
@@ -70,7 +77,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Check if any service-specific flag is true
-if ! $MV && ! $WV && ! $PG && ! $QD ! $ES; then
+if ! $MV && ! $WV && ! $PG && ! $QD && ! $ES && !$CH; then
     echo "No service-specific flags provided. Running all."
     ALL=true
 fi
@@ -83,6 +90,7 @@ if $ALL; then
     start_pgvector
     start_qdrant
     start_elasticsearch
+    start_chroma
 else
     echo "Running individual DB services."
     if $MV; then
@@ -99,6 +107,9 @@ else
     fi
     if $ES; then
         start_elasticsearch
+    fi
+    if $CH; then
+        start_chroma
     fi
 fi
 

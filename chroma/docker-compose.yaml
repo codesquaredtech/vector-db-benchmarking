@@ -1,0 +1,19 @@
+networks:
+  vector_db_testing:
+    name: vector_db_testing
+    external: true
+
+services:
+  chroma:
+    image: ghcr.io/chroma-core/chroma:0.6.3
+    container_name: chroma_db
+    networks:
+      - vector_db_testing
+    volumes:
+    - chroma_data:/var/lib/chroma/data
+    ports:
+    - 8000:8000
+    restart: on-failure:0
+
+volumes:
+  chroma_data:

@@ -13,8 +13,11 @@ docker compose -f "./qdrant/docker-compose.yaml" down -v
 echo "Removing pgvector"
 docker compose -f "./pgvector/docker-compose.yaml" down -v
 
-echo "Removing vectorizer"
-docker compose -f "./vectorizer/docker-compose.yaml" down -v
+echo "Removing chroma"
+docker compose -f "./chroma/docker-compose.yaml" down -v
+
+#echo "Removing vectorizer"
+#docker compose -f "./vectorizer/docker-compose.yaml" down -v
 
 echo "Removing benchmarker"
 docker compose -f "./benchmarker/docker-compose.yaml" down -v

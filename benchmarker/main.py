@@ -19,6 +19,9 @@ from app.database.qdrant_database import QdrantDatabase
 
 # Weaviate
 from app.database.weaviate_database import WeaviateDatabase
+
+# Chroma
+from app.database.chroma_database import ChromaDatabase
 from app.logger import get_logger
 
 # Elasticsearch
@@ -38,7 +41,7 @@ LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 
 COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
-DATABASE_FOR_BENCHMARKING = "ELASTICSEARCH"
+DATABASE_FOR_BENCHMARKING = "CHROMA"
 
 
 def get_vector_database(db_type: str):
@@ -52,6 +55,8 @@ def get_vector_database(db_type: str):
         return QdrantDatabase()
     elif db_type == "ELASTICSEARCH":
         return ElasticsearchDatabase()
+    elif db_type == "CHROMA":
+        return ChromaDatabase()
     else:
         raise ValueError(f"Unsupported vector database: {db_type}")
 
@@ -307,13 +312,14 @@ if __name__ == "__main__":
     Insert + Delete benchmarking
     """
 
+    db.connect()
     insert_embeddings(db)
 
     """
     Search benchmarking
     """
 
-    search_params = {"certainty": 0.8, "limit": 10}
+    search_params = {"treshold": 0.8, "limit": 10}
 
     search_similar_embeddings(
         db,
