@@ -1,0 +1,30 @@
+networks:
+  vector_db_testing:
+    name: vector_db_testing
+    external: true
+
+services:
+  elasticsearch:
+    image: elasticsearch:8.17.1
+    container_name: elasticsearch_db
+    environment:
+      - discovery.type=single-node
+      - node.name=es01
+      - cluster.name=elasticsearch_cluster
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=false
+    networks:
+      - vector_db_testing
+    volumes:
+      - esdata:/var/lib/elasticsearch/data
+    ports:
+      - "9200:9200"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://elasticsearch_db:9200/_cluster/health?wait_for_status=yellow&timeout=50s"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+
+volumes:
+  esdata:

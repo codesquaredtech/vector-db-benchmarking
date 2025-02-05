@@ -4,6 +4,9 @@ docker compose -f "./milvus/docker-compose.yaml" down -v
 echo "Removing weaviate"
 docker compose -f "./weaviate/docker-compose.yaml" down -v
 
+echo "Removing elasticsearch"
+docker compose -f "./elasticsearch/docker-compose.yaml" down -v
+
 echo "Removing qdrant"
 docker compose -f "./qdrant/docker-compose.yaml" down -v
 

@@ -10,13 +10,19 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 
 # Milvus
 from app.database.milvus_database import MilvusDatabase
+
 # PGVector
 from app.database.pgvector_database import PGVectorDatabase
+
 # Qdrant
 from app.database.qdrant_database import QdrantDatabase
+
 # Weaviate
 from app.database.weaviate_database import WeaviateDatabase
 from app.logger import get_logger
+
+# Elasticsearch
+from app.database.elasticsearch_database import ElasticsearchDatabase
 
 """
 Modify global variables if needed.
@@ -32,7 +38,8 @@ LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 
 COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
-DATABASE_FOR_BENCHMARKING = "QDRANT"
+DATABASE_FOR_BENCHMARKING = "ELASTICSEARCH"
+
 
 def get_vector_database(db_type: str):
     if db_type == "MILVUS":
@@ -43,6 +50,8 @@ def get_vector_database(db_type: str):
         return PGVectorDatabase()
     elif db_type == "QDRANT":
         return QdrantDatabase()
+    elif db_type == "ELASTICSEARCH":
+        return ElasticsearchDatabase()
     else:
         raise ValueError(f"Unsupported vector database: {db_type}")
 
