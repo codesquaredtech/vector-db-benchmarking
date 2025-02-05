@@ -12,6 +12,11 @@ start_weavite() {
     docker compose -f "./weaviate/docker-compose.yaml" up -d
 }
 
+start_qdrant() {
+    echo "Starting Qdrant service..."
+    docker compose -f "./qdrant/docker-compose.yaml" up -d
+}
+
 start_pgvector() {
     echo "Starting PGVector service..."
     docker compose -f "./pgvector/docker-compose.yaml" up -d
@@ -26,6 +31,7 @@ start_pgvector() {
 MV=false
 WV=false
 PG=false
+QD=false
 ALL=false
 
 while [[ "$#" -gt 0 ]]; do
@@ -38,6 +44,9 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         -pg)
             PG=true
+            ;;
+        -qd)
+            QD=true
             ;;
         -all)
             ALL=true
@@ -52,7 +61,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Check if any service-specific flag is true
-if ! $MV && ! $WV && ! $PG; then
+if ! $MV && ! $WV && ! $PG && ! $QD; then
     echo "No service-specific flags provided. Running all."
     ALL=true
 fi
@@ -63,6 +72,7 @@ if $ALL; then
     start_milvus
     start_weavite
     start_pgvector
+    start_qdrant
 else
     echo "Running individual DB services."
     if $MV; then
@@ -73,6 +83,9 @@ else
     fi
     if $PG; then
         start_pgvector
+    fi
+    if $QD; then
+        start_qdrant
     fi
 fi
 

@@ -6,4 +6,5 @@ scikit-learn==1.6.0
 weaviate-client==4.10.2
 SQLAlchemy==2.0.37
 psycopg2-binary==2.9.10
-pgvector==0.3.6 
+pgvector==0.3.6
+qdrant-client==1.13.2
