@@ -133,3 +133,6 @@ sleep 30
 
 echo "Starting benchmarker"
 docker compose -f "./benchmarker/docker-compose.yaml" up -d
+
+echo "Starting data visualiser"
+docker compose -f "./data_visualiser/docker-compose.yaml" up -d

@@ -13,6 +13,7 @@ services:
       - ./logs:/data_visualiser/logs
       - ./app:/data_visualiser/app
       - ./results:/data_visualiser/results
+      - ./plots:/data_visualiser/plots
     networks:
       - vector_db_testing
     command: ["python", "main.py"]
