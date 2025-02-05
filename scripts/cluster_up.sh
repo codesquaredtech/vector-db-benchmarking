@@ -82,6 +82,7 @@ if $ALL; then
     start_weavite
     start_pgvector
     start_qdrant
+    start_elasticsearch
 else
     echo "Running individual DB services."
     if $MV; then
