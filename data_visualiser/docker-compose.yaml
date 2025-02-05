@@ -1,0 +1,18 @@
+
+networks:
+  vector_db_testing:
+    name: vector_db_testing
+    external: true
+
+
+services:
+  data_visualiser:
+    build: .
+    volumes:
+      - ./main.py:/data_visualiser/main.py
+      - ./logs:/data_visualiser/logs
+      - ./app:/data_visualiser/app
+      - ./results:/data_visualiser/results
+    networks:
+      - vector_db_testing
+    command: ["python", "main.py"]

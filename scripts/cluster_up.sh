@@ -27,9 +27,20 @@ start_pgvector() {
     docker compose -f "./pgvector/docker-compose.yaml" up -d
     echo "Sleeping 10 seconds..."
     sleep 10
-    echo "Configuring PGVector"
+
+    echo "Installing dos2unix inside the container..."
+    docker exec -it pgvector_db bash -c "apt update && apt install -y dos2unix"
+
+    echo "Converting line endings for init.sh..."
+    docker exec -it pgvector_db bash -c "dos2unix /config/init.sh"
+
+    echo "Sleeping 5 seconds..."
+    sleep 5
+
+    echo "Configuring PGVector..."
     docker exec -it pgvector_db bash -c "/config/init.sh"
 }
+
 
 start_chroma() {
     echo "Starting Chroma service..."
@@ -58,6 +69,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         -qd)
             QD=true
+            ;;
         -ch)
             CH=true
             ;;
@@ -77,7 +89,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Check if any service-specific flag is true
-if ! $MV && ! $WV && ! $PG && ! $QD && ! $ES && !$CH; then
+if ! $MV && ! $WV && ! $PG && ! $QD && ! $ES && ! $CH; then
     echo "No service-specific flags provided. Running all."
     ALL=true
 fi
