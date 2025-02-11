@@ -4,10 +4,11 @@
 
 Position yourself in the root folder (vector-db-benchmarking).
 To run the cluster, run ```./scripts/cluster_up.sh```.
-Running the cluster consists of running three main components:
+Running the cluster consists of running four main components:
 - <b>vector databases</b> - depending on which vector database is being benchmarked, others can be commented out in the script;
 - <b>vectorizer</b> - this component should be commented out if no new embeddings are being created, but instead benchmarking is the only thing that is being done;
-- <b>benchmarker</b> - if there is only need for creating the new embeddings that will later be used by benchmarker, this component can be commented out.
+- <b>benchmarker</b> - if there is only need for creating the new embeddings that will later be used by benchmarker, this component can be commented out;
+- <b>data_visualiser</b> - when running this component, others can be commented out.
 
 To shut down the cluster, run ```./scripts/cluster_down.sh```.
 
@@ -30,3 +31,9 @@ There are a few things to consider when working with the benchmarker component:
 - <b>main.py</b> - two main operations are occurring in this file: insertion + deletion benchmarking and search benchmarking. Functions referring to those operations should not be modified. The only code that should be modified is under the ```if __name__ == '__main__':``` line of code, as well as the global variables present at the top of the ```main.py``` file.
 - <b>results directory</b> - this is the directory that will include both insertion + deletion, as well as the search benchmarking results. These results will be stored in the ```.csv``` files.
 - <b>main-examples directory</b> - this is the directory that should include examples of the code below the ```if __name__ == '__main__':``` line of code for each vector database. Be sure to add this when done with the implementation.
+
+## Working with the Data Visualiser Component
+Main point of this component is to generate plots that visualise the received results accordingly. Few things should be considered when working with this component:
+- <b>results directory</b> - results from the benchmarking component should be put here.
+- <b>main.py</b> - to generate plots, functions that are present in this file should be called (there are examples here already).
+- <b>plots directory</b> - all of the generated plots will be placed in this directory.
