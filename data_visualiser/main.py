@@ -26,7 +26,7 @@ def plot_metrics_scatterplot(
     file_name=None,
 ):
     """
-    Create a grid of scatterplots with a specified metric for all databases, using different colors for each database.
+    Create a grid of scatterplots with a specified metric for all databases.
     The grid will have 3 rows and 2 columns, and the Y-axis will be the same for all plots.
 
     Parameters:
@@ -56,7 +56,6 @@ def plot_metrics_scatterplot(
             x=df_valid["iteration"],
             y=df_valid[metric],
             color=colors[i],
-            label=db_name,
             alpha=0.7,
             ax=ax,
         )
@@ -72,9 +71,7 @@ def plot_metrics_scatterplot(
         ax.set_xlabel("Iteration")
         ax.set_ylabel(ylabel if ylabel else metric)
         ax.set_title(f"{db_name} - {metric.capitalize()}")
-        ax.legend(title="Database", bbox_to_anchor=(1.05, 1), loc="upper left")
         ax.grid(True)
-
         ax.yaxis.set_visible(True)
 
     fig.suptitle(
