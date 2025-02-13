@@ -1,7 +1,7 @@
 '''
 logger = get_logger()
 
-db = get_vector_database(BENCHMARKED_DATABASE)
+db = get_vector_database(DATABASE_FOR_BENCHMARKING)
 """
 Insert + Delete benchmarking
 """

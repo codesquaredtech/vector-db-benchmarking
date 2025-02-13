@@ -15,7 +15,6 @@ services:
     networks:
       - vector_db_testing
     volumes:
-      - ./volumes/milvus:/var/lib/milvus # todo - remove this (probably)
       - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml
       - ./user.yaml:/milvus/configs/user.yaml
     ports:

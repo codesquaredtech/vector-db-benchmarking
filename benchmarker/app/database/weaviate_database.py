@@ -31,7 +31,7 @@ class WeaviateDatabase(VectorDatabase):
         global global_client
         global_client.collections.delete(collection_name)
 
-    def create_collection(self, collection_name: str):
+    def create_collection(self, collection_name: str, vector_size: int):
         global global_client
         properties = [
             # No need for ID - automatically gets generated as an UUID
