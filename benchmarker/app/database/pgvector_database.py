@@ -44,10 +44,10 @@ class PGVectorDatabase(VectorDatabase):
                 logger.info(f"Error dropping table: {e}")
                 self.connection.rollback()
 
-    def create_collection(self, collection_name: str):
+    def create_collection(self, collection_name: str, vector_size: int):
         columns = [
             "id bigserial PRIMARY KEY",
-            "embedding vector(1280)",
+            f"embedding vector({vector_size})",
             "image_path varchar(255)",
         ]
 

@@ -31,7 +31,7 @@ class VectorDatabase(ABC):
 
     @abstractmethod
     @handle_exceptions(logger)
-    def create_collection(self, collection_name: str):
+    def create_collection(self, collection_name: str, vector_size: int):
         pass
 
     @abstractmethod

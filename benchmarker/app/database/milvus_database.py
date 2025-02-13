@@ -22,12 +22,12 @@ class MilvusDatabase(VectorDatabase):
             collection.load()
             utility.drop_collection(collection_name)
 
-    def create_collection(self, collection_name: str):
+    def create_collection(self, collection_name: str, vector_size: int):
         id_field = FieldSchema(
             name="id", dtype=DataType.INT64, is_primary=True, auto_id=False
         )
         embedding_field = FieldSchema(
-            name="embedding", dtype=DataType.FLOAT_VECTOR, dim=1280
+            name="embedding", dtype=DataType.FLOAT_VECTOR, dim=vector_size
         )
         image_path_field = FieldSchema(
             name="image_path", dtype=DataType.VARCHAR, max_length=255
@@ -102,7 +102,7 @@ class MilvusDatabase(VectorDatabase):
         for result in results:
             for hit in result:
                 logger.info(
-                    f"ID: {hit.entity.get("id")}, Image path: {hit.entity.get("image_path")}, Score: {hit.score}"
+                    f"ID: {hit.entity.get('id')}, Image path: {hit.entity.get('image_path')}, Score: {hit.score}"
                 )
                 similar_embeddings.append(hit.entity.get("image_path").split("/")[-1])
         return similar_embeddings

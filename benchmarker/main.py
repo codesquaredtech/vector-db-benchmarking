@@ -31,7 +31,7 @@ from app.database.elasticsearch_database import ElasticsearchDatabase
 Modify global variables if needed.
 """
 
-INPUT_FILE_PATH = "./input/embeddings_2024-12-17_09-53-28.parquet"
+INPUT_FILE_PATH = "./input/embeddings_insightface_2025-02-13_11-11-54.parquet"
 VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH = (
     "./results/vector_storing_and_deletion_results_"
 )
@@ -41,7 +41,8 @@ LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 
 COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
-DATABASE_FOR_BENCHMARKING = "PGVECTOR"
+DATABASE_FOR_BENCHMARKING = "MILVUS"
+VECTOR_SIZE = 512  # 1280 for mediapipe, 512 for insightface
 
 
 def get_vector_database(db_type: str):
@@ -103,7 +104,7 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
         # Measure memory in MB
         memory_before_init = process.memory_info().rss / (1024**2)
         vector_db_initialisation_start = datetime.datetime.now()
-        db.create_collection(COLLECTION_NAME)
+        db.create_collection(COLLECTION_NAME, VECTOR_SIZE)
         vector_db_initialisation_end = datetime.datetime.now()
         memory_after_init = process.memory_info().rss / (1024**2)
 
@@ -308,6 +309,7 @@ if __name__ == "__main__":
     logger = get_logger()
 
     db = get_vector_database(DATABASE_FOR_BENCHMARKING)
+
     """
     Insert + Delete benchmarking
     """
@@ -318,7 +320,14 @@ if __name__ == "__main__":
     Search benchmarking
     """
 
-    search_params = {"certainty": 0.8, "limit": 10}
+    search_params = search_params = {
+        "anns_field": "embedding",
+        "metric_type": "COSINE",
+        "index_params": {"ef": 64},
+        "limit": None,
+        "threshold": 0.8,
+        "output_fields": ["id", "image_path"],
+    }
 
     search_similar_embeddings(
         db,
