@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 import psutil
-from sklearn.metrics import f1_score, precision_score, recall_score
+from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix
 
 # Milvus
 from app.database.milvus_database import MilvusDatabase
@@ -42,7 +42,7 @@ LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
 COLLECTION_NAME = "Faces"
 NUM_ITERATIONS = 10
 DATABASE_FOR_BENCHMARKING = "MILVUS"
-VECTOR_SIZE = 512  # 1280 for mediapipe, 512 for insightface
+VECTOR_SIZE = 512  # 1280 for mediapipe, 512 for insightface, 768 for dino
 
 
 def get_vector_database(db_type: str):
@@ -214,13 +214,21 @@ def search_embedding(db, embedding, search_params, image_path):
     y_true = real_results[target_picture]
     y_pred = real_results[f"predicted_{target_picture}"]
 
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+
     precision = precision_score(y_true, y_pred)
     recall = recall_score(y_true, y_pred)
     f1 = f1_score(y_true, y_pred)
+    # mAP would require us to use the limit parameter instead of the cosine similarity threshold everywhere
+    specificity = tn / (tn + fp)
+    far = fp / (fp + tn)
+    frr = fn / (fn + tp)
 
-    logger.info(f"Precision {precision} recall {recall} f1 {f1}")
+    logger.info(
+        f"Precision {precision} recall {recall} f1 {f1} Specificity {specificity} far {far} frr {frr}"
+    )
 
-    return end_time - start_time, precision, recall, f1
+    return end_time - start_time, precision, recall, f1, specificity, far, frr
 
 
 def search_similar_embeddings(
@@ -245,7 +253,9 @@ def search_similar_embeddings(
 
         for i, future in enumerate(as_completed(futures)):
             try:
-                search_time, precision, recall, f1 = future.result()
+                search_time, precision, recall, f1, specificity, far, frr = (
+                    future.result()
+                )
                 successful_requests += 1
 
                 benchmark_data.append(
@@ -255,10 +265,13 @@ def search_similar_embeddings(
                         "precision": precision,
                         "recall": recall,
                         "f1_score": f1,
+                        "specificity": specificity,
+                        "far": far,
+                        "frr": frr,
                     }
                 )
                 logger.info(
-                    f"Iteration {i + 1} - Search Time: {search_time}s, Precision: {precision}, Recall: {recall}, F1: {f1}"
+                    f"Iteration {i + 1} - Search Time: {search_time}s, Precision: {precision}, Recall: {recall}, F1: {f1}, Specificity: {specificity}, FAR: {far}, FRR: {frr}"
                 )
             except Exception as e:
                 logger.error(f"Error during search on iteration {i + 1}: {e}")
