@@ -2,9 +2,14 @@ from itertools import chain
 from multiprocessing import Pool
 
 import pandas as pd
+import numpy as np
 import json
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
 from deepface import DeepFace
 import insightface
+import timm
 
 from app.face_detection import (
     create_embedding,
@@ -20,7 +25,7 @@ IMAGE_TO_COMPARE_WITH_PATH = "./images/comparison/test_1.jpg"
 OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH = "./output/embedding_compare_with.csv"
 CHUNK_SIZE = 1
 POOL_PROCESSES = 1
-FACE_EXTRACTION_MODEL = "insightface"  # mediapipe, insightface
+FACE_EXTRACTION_MODEL = "dino"  # mediapipe, insightface, dino
 OUTPUT_FILE_PATH = (
     "./output/embeddings_{face_extraction_model}_{current_datetime}.parquet"
 )
@@ -83,6 +88,44 @@ def process_image(image_path):
             logger.info(f"Number of faces on the image: {len(faces)}")
         else:
             logger.warning("No face detected in the image.")
+
+    elif FACE_EXTRACTION_MODEL == "dino":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = timm.create_model("vit_base_patch16_224", pretrained=True).to(device)
+        model.eval()
+        transform = transforms.Compose(
+            [
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
+        logger.info("Extracting faces with DeepFace (RetinaFace)...")
+        detected_faces = DeepFace.extract_faces(
+            img_path=numpy_image,
+            enforce_detection=False,
+            detector_backend="retinaface",
+            align=True,
+        )
+        face_images = extract_faces_from_deepface_detections(detected_faces)
+        for face_image in face_images:
+            face_image = (face_image * 255).astype(np.uint8)
+            pil_image = Image.fromarray(face_image)
+            input_tensor = transform(pil_image).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            embedding = model.forward_features(input_tensor)[:, 0, :]
+            embedding = embedding.cpu().numpy().flatten()
+            vectors_to_insert.append(
+                {
+                    "embedding": embedding,
+                    "image_path": image_path,
+                }
+            )
+        logger.info("DINO embeddings generated.")
+
     else:
         raise ValueError(f"Unsupported face extraction model: {FACE_EXTRACTION_MODEL}")
 
@@ -128,7 +171,6 @@ def process_comparison_image():
 
 
 def main():
-    """
     import datetime
 
     start_datetime = datetime.datetime.now()
@@ -147,7 +189,6 @@ def main():
     logger.info(
         f"Total processing time: {(end_datetime - start_datetime).total_seconds()}"
     )
-    """
     # converting comparison image to an embedding
     logger.info("Starting vectorisation of the comparison image...")
     process_comparison_image()
