@@ -53,7 +53,12 @@ class ElasticsearchDatabase(VectorDatabase):
         mapping = {
             "mappings": {
                 "properties": {
-                    "embedding": {"type": "dense_vector", "dims": vector_size},
+                    "embedding": {
+                        "type": "dense_vector", 
+                        "dims": vector_size, 
+                        "index": "true", 
+                        "similarity" : "cosine" #cosine is default
+                    },
                     "image_path": {"type": "keyword"},
                 }
             }
@@ -91,16 +96,24 @@ class ElasticsearchDatabase(VectorDatabase):
             for i, row in enumerate(rows)
         ]
 
-        helpers.bulk(self.client, actions)
+        try:
+            helpers.bulk(self.client, actions)
+            logger.info(f"Successfully inserted data into '{collection_name}'")
+        except Exception as e:
+            logger.error(f"Error inserting data into Elasticsearch: {e}")
 
     def delete(self, collection_name: str):
         if self.client is None:
             logger.error("Elasticsearch client is not connected.")
             return
 
-        self.client.delete_by_query(
-            index=collection_name.lower(), body={"query": {"match_all": {}}}
-        )
+        try:
+            self.client.delete_by_query(
+                index=collection_name.lower(), body={"query": {"match_all": {}}}
+            )
+            logger.info(f"All data from '{collection_name}' has been deleted successfully.")
+        except Exception as e:
+            logger.error(f"Error deleting data from Elasticsearch: {e}")
 
     def search(self, collection_name: str, embedding: list, params: dict):
         if self.client is None:
@@ -108,21 +121,24 @@ class ElasticsearchDatabase(VectorDatabase):
             return []
 
         index_name = collection_name.lower()
-        limit = params.get("limit", 16000)
+        limit = params.get("limit", 10)
         certainty = params.get("certainty", 0.5)
+        num_candidates = params.get("num_candidates", 100)
         results = []
 
-        query = {
-            "script_score": {
-                "query": {"match_all": {}},
-                "script": {
-                    "source": "cosineSimilarity(params.queryVector, 'embedding') + 1.0",
-                    "params": {"queryVector": embedding},
-                },
-            }
+        knn = {
+            "field" : "embedding",
+            "query_vector": embedding,
+            "k": limit,
+            "num_candidates": num_candidates
         }
 
-        body = {"size": limit, "query": query, "_source": {"includes": ["image_path"]}}
+        body = {
+            "size": limit,
+            "knn": knn,
+            "_source": ["image_path"],
+            "min_score": certainty
+        }
 
         try:
             response = self.client.search(index=index_name, body=body)
@@ -130,7 +146,6 @@ class ElasticsearchDatabase(VectorDatabase):
             results = [
                 {**hit["_source"], "score": hit["_score"]}
                 for hit in response["hits"]["hits"]
-                if hit["_score"] >= certainty
             ]
 
             return results

@@ -12,7 +12,7 @@ insert_embeddings(db)
 Search benchmarking
 """
 
-search_params = {"certainty": 0.8, "limit": 10}
+search_params = {"certainty": 0.8, "limit": 10, "num_candidates": 100}
 
 search_similar_embeddings(
     db,

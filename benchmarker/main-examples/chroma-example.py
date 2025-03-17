@@ -13,7 +13,7 @@ insert_embeddings(db)
 Search benchmarking
 """
 
-search_params = {"treshold": 0.8, "limit": 10}
+search_params = {"threshold": 0.8, "limit": 10}
 
 search_similar_embeddings(
     db,
