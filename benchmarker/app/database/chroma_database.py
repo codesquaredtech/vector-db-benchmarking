@@ -91,7 +91,7 @@ class ChromaDatabase(VectorDatabase):
         collection = self.client.get_or_create_collection(name=collection_name)
 
         limit = params.get("limit", 16000)
-        threshold = params.get("threshold ", 0.5)
+        threshold = params.get("threshold", 0.5)
 
         results = collection.query(query_embeddings=[embedding], n_results=limit)
 
