@@ -14,6 +14,7 @@ services:
       - ./logs:/vectorizer/logs
       - ./output:/vectorizer/output
       - ./app:/vectorizer/app
+      # TODO: Add mapping for the image folder (if external, e.g., HDD)
     networks:
       - vector_db_testing
     command: ["python", "main.py"]

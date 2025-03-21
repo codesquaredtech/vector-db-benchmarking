@@ -17,7 +17,7 @@ Each vector database should be a separate component. After adding all of the nec
 
 ## Working with the Vectorizer Component
 Three variables should be changed if needed when running the Vectorizer Component (in the main.py file):
-- <b>REFERENT_IMAGE_DIRECTORY</b> - refers to relative path of the directory where the images that should be processed are present;
+- <b>REFERENT_IMAGE_DIRECTORIES</b> - refers to relative paths of the directories where the images that should be processed are present;
 - <b>OUTPUT_FILE_PATH</b> - refers to the relative path of the ```.parquet``` file which will contain all of the extracted embeddings;
 - <b>OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH</b> - refers to the relative path of the ```.csv``` file which will contain embedding and image path (name) of the face that is being searched for in the benchmarker component.
 

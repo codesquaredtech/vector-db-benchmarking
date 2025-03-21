@@ -20,15 +20,16 @@ from app.images import convert_bytes_to_image, get_image_paths
 from app.logger import get_logger
 
 SUPPORTED_IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".bmp", ".gif")
-REFERENT_IMAGE_DIRECTORY = "./images/NORTHSTORM/2024/"
+REFERENT_IMAGE_DIRECTORIES = ["./images/NORTHSTORM/2024"]
 IMAGE_TO_COMPARE_WITH_PATH = "./images/comparison/test_1.jpg"
 OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH = "./output/embedding_compare_with.csv"
 CHUNK_SIZE = 1
 POOL_PROCESSES = 1
-FACE_EXTRACTION_MODEL = "dino"  # mediapipe, insightface, dino
+FACE_EXTRACTION_MODEL = "insightface"  # mediapipe, insightface, dino
 OUTPUT_FILE_PATH = (
     "./output/embeddings_{face_extraction_model}_{current_datetime}.parquet"
 )
+GPU_ENABLED = torch.cuda.is_available()
 
 
 def process_image(image_path):
@@ -66,8 +67,14 @@ def process_image(image_path):
 
     elif FACE_EXTRACTION_MODEL == "insightface":
         logger.info("Initialising the model...")
-        model = insightface.app.FaceAnalysis(name="buffalo_l")
-        model.prepare(ctx_id=-1)
+        if GPU_ENABLED:
+            model = insightface.app.FaceAnalysis(
+                name="buffalo_l", providers=["CUDAExecutionProvider"]
+            )
+            model.prepare(ctx_id=0)
+        else:
+            model = insightface.app.FaceAnalysis(name="buffalo_l")
+            model.prepare(ctx_id=-1)
         logger.info("Successfully initialised the model")
 
         logger.info("Extracting faces...")
@@ -90,7 +97,7 @@ def process_image(image_path):
             logger.warning("No face detected in the image.")
 
     elif FACE_EXTRACTION_MODEL == "dino":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda" if GPU_ENABLED else "cpu")
         model = timm.create_model("vit_base_patch16_224", pretrained=True).to(device)
         model.eval()
         transform = transforms.Compose(
@@ -132,25 +139,28 @@ def process_image(image_path):
     return vectors_to_insert
 
 
-def process_images_in_directory(directory_path, current_datetime, chunk_size=100):
-    image_files = get_image_paths(
-        directory_path=directory_path, supported_image_types=SUPPORTED_IMAGE_TYPES
-    )
-    logger.info(f"len of image_files: {len(image_files)}")
-
-    with Pool(processes=POOL_PROCESSES) as pool:
-        list_of_lists = pool.map(process_image, image_files, chunksize=chunk_size)
-        flattened_list = list(chain.from_iterable(list_of_lists))
-        # logger.info(f"Flattened list: {flattened_list}")
-
-        df = pd.DataFrame(flattened_list)
-        df.to_parquet(
-            OUTPUT_FILE_PATH.format(
-                current_datetime=current_datetime.strftime("%Y-%m-%d_%H-%M-%S"),
-                face_extraction_model=FACE_EXTRACTION_MODEL,
-            ),
-            compression="snappy",
+def process_images_in_directory(directory_paths, current_datetime, chunk_size=100):
+    for directory_path in directory_paths:
+        image_files = get_image_paths(
+            directory_path=directory_path, supported_image_types=SUPPORTED_IMAGE_TYPES
         )
+        logger.info(f"len of image_files: {len(image_files)}")
+
+        with Pool(processes=POOL_PROCESSES) as pool:
+            list_of_lists = pool.map(process_image, image_files, chunksize=chunk_size)
+            flattened_list = list(chain.from_iterable(list_of_lists))
+            # logger.info(f"Flattened list: {flattened_list}")
+
+            df = pd.DataFrame(flattened_list)
+            logger.info(f"Saving parquet file for {directory_path}...")
+            df.to_parquet(
+                OUTPUT_FILE_PATH.format(
+                    current_datetime=current_datetime.strftime("%Y-%m-%d_%H-%M-%S"),
+                    face_extraction_model=FACE_EXTRACTION_MODEL,
+                ),
+                compression="snappy",
+            )
+            logger.info(f"Saved parquet file for {directory_path}")
 
 
 def process_comparison_image():
@@ -173,13 +183,16 @@ def process_comparison_image():
 def main():
     import datetime
 
+    logger.info(f"GPU enabled: {GPU_ENABLED}")
     start_datetime = datetime.datetime.now()
     logger.info(
         f"Starting vectorizing at: {start_datetime.strftime('%Y-%m-%d_%H-%M-%S')}"
     )
 
     process_images_in_directory(
-        REFERENT_IMAGE_DIRECTORY, current_datetime=start_datetime, chunk_size=CHUNK_SIZE
+        REFERENT_IMAGE_DIRECTORIES,
+        current_datetime=start_datetime,
+        chunk_size=CHUNK_SIZE,
     )
 
     end_datetime = datetime.datetime.now()
