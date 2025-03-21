@@ -20,7 +20,7 @@ from app.images import convert_bytes_to_image, get_image_paths
 from app.logger import get_logger
 
 SUPPORTED_IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".bmp", ".gif")
-REFERENT_IMAGE_DIRECTORIES = ["./images/NORTHSTORM/2024"]
+REFERENT_IMAGE_DIRECTORIES = ["./path/to/folder_1", "./path/to/folder_2"]
 IMAGE_TO_COMPARE_WITH_PATH = "./images/comparison/test_1.jpg"
 OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH = "./output/embedding_compare_with.csv"
 CHUNK_SIZE = 1
