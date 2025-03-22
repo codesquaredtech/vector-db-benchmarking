@@ -26,9 +26,7 @@ OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH = "./output/embedding_compare_with.csv"
 CHUNK_SIZE = 1
 POOL_PROCESSES = 1
 FACE_EXTRACTION_MODEL = "insightface"  # mediapipe, insightface, dino
-OUTPUT_FILE_PATH = (
-    "./output/embeddings_{face_extraction_model}_{current_datetime}.parquet"
-)
+OUTPUT_FILE_PATH = "./output/embeddings_{face_extraction_model}_{image_name}_{current_datetime}.parquet"
 GPU_ENABLED = torch.cuda.is_available()
 
 
@@ -141,6 +139,7 @@ def process_image(image_path):
 
 def process_images_in_directory(directory_paths, current_datetime, chunk_size=100):
     for directory_path in directory_paths:
+        image_name = directory_path.split("/")[-1]
         image_files = get_image_paths(
             directory_path=directory_path, supported_image_types=SUPPORTED_IMAGE_TYPES
         )
@@ -157,6 +156,7 @@ def process_images_in_directory(directory_paths, current_datetime, chunk_size=10
                 OUTPUT_FILE_PATH.format(
                     current_datetime=current_datetime.strftime("%Y-%m-%d_%H-%M-%S"),
                     face_extraction_model=FACE_EXTRACTION_MODEL,
+                    image_name=image_name,
                 ),
                 compression="snappy",
             )
