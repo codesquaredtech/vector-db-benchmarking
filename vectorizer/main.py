@@ -1,9 +1,6 @@
 from itertools import chain
-from multiprocessing import Pool
-
 import pandas as pd
 import numpy as np
-import json
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
@@ -20,81 +17,34 @@ from app.images import convert_bytes_to_image, get_image_paths
 from app.logger import get_logger
 
 SUPPORTED_IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".bmp", ".gif")
-REFERENT_IMAGE_DIRECTORIES = ["./path/to/folder_1", "./path/to/folder_2"]
-IMAGE_TO_COMPARE_WITH_PATH = "./images/comparison/test_1.jpg"
-OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH = "./output/embedding_compare_with.csv"
-CHUNK_SIZE = 1
-POOL_PROCESSES = 1
-FACE_EXTRACTION_MODEL = "insightface"  # mediapipe, insightface, dino
+REFERENT_IMAGE_DIRECTORIES = ["./images/NORTHSTORM/2024"]
 OUTPUT_FILE_PATH = "./output/embeddings_{face_extraction_model}_{image_name}_{current_datetime}.parquet"
+FACE_EXTRACTION_MODEL = "mediapipe"  # mediapipe, insightface, dino
 GPU_ENABLED = torch.cuda.is_available()
+logger = get_logger()
+
+# Global Model Storage
+models = {}
 
 
-def process_image(image_path):
-    logger.info(f"Processing image: {image_path}")
+def initialize_models():
+    """Initialize models once and store in global state."""
+    global models
 
-    numpy_image, _ = convert_bytes_to_image(image_path)
-    vectors_to_insert = []
-
-    logger.info(f"Extracting face embeddings with {FACE_EXTRACTION_MODEL}...")
     if FACE_EXTRACTION_MODEL == "mediapipe":
-        logger.info("Initialising face embedder...")
-        face_embedder = initialise_face_embedder()
-        logger.info("Successfully initialised face embedder")
-
-        logger.info("Extracting faces...")
-        detected_faces = DeepFace.extract_faces(
-            img_path=numpy_image,
-            enforce_detection=False,
-            detector_backend="retinaface",
-            align=True,
-        )
-        logger.info("Successfully extracted faces")
-
-        logger.info("Converting extracted faces...")
-        face_images = extract_faces_from_deepface_detections(detected_faces)
-        for image in face_images:
-            vectors_to_insert.append(
-                {
-                    "embedding": create_embedding(image, face_embedder),
-                    "image_path": image_path,
-                }
-            )
-        logger.info("Successfully converted extracted faces")
-        logger.info(f"Number of faces on the image: {len(face_images)}")
+        models["face_embedder"] = initialise_face_embedder()
 
     elif FACE_EXTRACTION_MODEL == "insightface":
-        logger.info("Initialising the model...")
-        if GPU_ENABLED:
-            model = insightface.app.FaceAnalysis(
-                name="buffalo_l", providers=["CUDAExecutionProvider"]
-            )
-            model.prepare(ctx_id=0)
-        else:
-            model = insightface.app.FaceAnalysis(name="buffalo_l")
-            model.prepare(ctx_id=-1)
-        logger.info("Successfully initialised the model")
-
-        logger.info("Extracting faces...")
-        faces = model.get(numpy_image)
-
-        if faces:
-            logger.info("Successfully extracted the faces")
-            for face in faces:
-                logger.info("Converting the extracted faces...")
-                embedding = face.normed_embedding
-                vectors_to_insert.append(
-                    {
-                        "embedding": embedding,
-                        "image_path": image_path,
-                    }
-                )
-            logger.info("Successfully converted the extracted faces")
-            logger.info(f"Number of faces on the image: {len(faces)}")
-        else:
-            logger.warning("No face detected in the image.")
+        logger.info("Initializing InsightFace model...")
+        model = insightface.app.FaceAnalysis(
+            name="buffalo_l",
+            providers=["CUDAExecutionProvider"] if GPU_ENABLED else None,
+        )
+        model.prepare(ctx_id=0 if GPU_ENABLED else -1)
+        models["insightface"] = model
 
     elif FACE_EXTRACTION_MODEL == "dino":
+        logger.info("Initializing DINO model...")
         device = torch.device("cuda" if GPU_ENABLED else "cpu")
         model = timm.create_model("vit_base_patch16_224", pretrained=True).to(device)
         model.eval()
@@ -107,7 +57,17 @@ def process_image(image_path):
                 ),
             ]
         )
-        logger.info("Extracting faces with DeepFace (RetinaFace)...")
+        models["dino"] = (model, transform, device)
+
+
+def process_image(image_path):
+    """Process a single image, extracting face embeddings."""
+    logger.info(f"Processing image: {image_path}")
+    numpy_image, _ = convert_bytes_to_image(image_path)
+    vectors_to_insert = []
+
+    if FACE_EXTRACTION_MODEL == "mediapipe":
+        face_embedder = models["face_embedder"]
         detected_faces = DeepFace.extract_faces(
             img_path=numpy_image,
             enforce_detection=False,
@@ -115,72 +75,81 @@ def process_image(image_path):
             align=True,
         )
         face_images = extract_faces_from_deepface_detections(detected_faces)
-        for face_image in face_images:
-            face_image = (face_image * 255).astype(np.uint8)
-            pil_image = Image.fromarray(face_image)
-            input_tensor = transform(pil_image).unsqueeze(0).to(device)
 
-        with torch.no_grad():
-            embedding = model.forward_features(input_tensor)[:, 0, :]
-            embedding = embedding.cpu().numpy().flatten()
+        for image in face_images:
             vectors_to_insert.append(
                 {
-                    "embedding": embedding,
+                    "embedding": create_embedding(image, face_embedder),
                     "image_path": image_path,
                 }
             )
-        logger.info("DINO embeddings generated.")
 
-    else:
-        raise ValueError(f"Unsupported face extraction model: {FACE_EXTRACTION_MODEL}")
+    elif FACE_EXTRACTION_MODEL == "insightface":
+        model = models["insightface"]
+        faces = model.get(numpy_image)
+
+        for face in faces:
+            vectors_to_insert.append(
+                {"embedding": face.normed_embedding, "image_path": image_path}
+            )
+
+    elif FACE_EXTRACTION_MODEL == "dino":
+        model, transform, device = models["dino"]
+        detected_faces = DeepFace.extract_faces(
+            img_path=numpy_image,
+            enforce_detection=False,
+            detector_backend="retinaface",
+            align=True,
+        )
+        face_images = extract_faces_from_deepface_detections(detected_faces)
+
+        for face_image in face_images:
+            pil_image = Image.fromarray((face_image * 255).astype(np.uint8))
+            input_tensor = transform(pil_image).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                embedding = (
+                    model.forward_features(input_tensor)[:, 0, :]
+                    .cpu()
+                    .numpy()
+                    .flatten()
+                )
+                vectors_to_insert.append(
+                    {"embedding": embedding, "image_path": image_path}
+                )
 
     return vectors_to_insert
 
 
-def process_images_in_directory(directory_paths, current_datetime, chunk_size=100):
+def process_images_in_directory(directory_paths, current_datetime):
+    """Processes all images in given directories sequentially."""
+    initialize_models()
+
     for directory_path in directory_paths:
         image_name = directory_path.split("/")[-1]
         image_files = get_image_paths(
             directory_path=directory_path, supported_image_types=SUPPORTED_IMAGE_TYPES
         )
-        logger.info(f"len of image_files: {len(image_files)}")
+        logger.info(f"Processing {len(image_files)} images in {directory_path}...")
 
-        with Pool(processes=POOL_PROCESSES) as pool:
-            list_of_lists = pool.map(process_image, image_files, chunksize=chunk_size)
-            flattened_list = list(chain.from_iterable(list_of_lists))
-            # logger.info(f"Flattened list: {flattened_list}")
+        all_embeddings = []
+        for image_path in image_files:
+            all_embeddings.extend(process_image(image_path))
 
-            df = pd.DataFrame(flattened_list)
-            logger.info(f"Saving parquet file for {directory_path}...")
-            df.to_parquet(
-                OUTPUT_FILE_PATH.format(
-                    current_datetime=current_datetime.strftime("%Y-%m-%d_%H-%M-%S"),
-                    face_extraction_model=FACE_EXTRACTION_MODEL,
-                    image_name=image_name,
-                ),
-                compression="snappy",
-            )
-            logger.info(f"Saved parquet file for {directory_path}")
-
-
-def process_comparison_image():
-    embedding_with_path = process_image(IMAGE_TO_COMPARE_WITH_PATH)[0]
-    df = pd.DataFrame(
-        [
-            {
-                "embedding": json.dumps(embedding_with_path["embedding"].tolist()),
-                "image_path": embedding_with_path["image_path"],
-            }
-        ]
-    )
-
-    df.to_csv(OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH, index=False)
-    logger.info(
-        f"Saved comparison embedding with path to {OUTPUT_EMBEDDING_TO_COMPARE_WITH_PATH}"
-    )
+        df = pd.DataFrame(all_embeddings)
+        df.to_parquet(
+            OUTPUT_FILE_PATH.format(
+                current_datetime=current_datetime.strftime("%Y-%m-%d_%H-%M-%S"),
+                face_extraction_model=FACE_EXTRACTION_MODEL,
+                image_name=image_name,
+            ),
+            compression="snappy",
+        )
+        logger.info(f"Saved parquet file for {directory_path}")
 
 
 def main():
+    """Main function to execute the face embedding pipeline."""
     import datetime
 
     logger.info(f"GPU enabled: {GPU_ENABLED}")
@@ -189,25 +158,16 @@ def main():
         f"Starting vectorizing at: {start_datetime.strftime('%Y-%m-%d_%H-%M-%S')}"
     )
 
-    process_images_in_directory(
-        REFERENT_IMAGE_DIRECTORIES,
-        current_datetime=start_datetime,
-        chunk_size=CHUNK_SIZE,
-    )
+    process_images_in_directory(REFERENT_IMAGE_DIRECTORIES, start_datetime)
 
     end_datetime = datetime.datetime.now()
     logger.info(
         f"Finished vectorizing at: {end_datetime.strftime('%Y-%m-%d_%H-%M-%S')}"
     )
     logger.info(
-        f"Total processing time: {(end_datetime - start_datetime).total_seconds()}"
+        f"Total processing time: {(end_datetime - start_datetime).total_seconds()} seconds"
     )
-    # converting comparison image to an embedding
-    logger.info("Starting vectorisation of the comparison image...")
-    process_comparison_image()
-    logger.info("Successfully vectorised the comparison image")
 
 
 if __name__ == "__main__":
-    logger = get_logger()
     main()

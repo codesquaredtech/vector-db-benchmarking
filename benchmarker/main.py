@@ -31,7 +31,7 @@ from app.database.elasticsearch_database import ElasticsearchDatabase
 Modify global variables if needed.
 """
 
-INPUT_FILE_PATH = "./input/embeddings_insightface_2025-02-13_11-11-54.parquet"
+INPUT_FILE_PATHS = ["./input/embeddings_insightface_2025-02-13_11-11-54.parquet"]
 VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH = (
     "./results/vector_storing_and_deletion_results_"
 )
@@ -62,14 +62,19 @@ def get_vector_database(db_type: str):
         raise ValueError(f"Unsupported vector database: {db_type}")
 
 
-def retrieve_embeddings_from_parquet_file(file_path):
-    try:
-        embeddings = pd.read_parquet(file_path, engine="pyarrow")
-        return embeddings
-    except Exception as e:
-        logger.error(
-            f"An error occurred while retrieving embeddings from {file_path}: {e}"
-        )
+def retrieve_embeddings_from_parquet_files(file_paths):
+    embeddings_list = []
+    for file_path in file_paths:
+        try:
+            embeddings = pd.read_parquet(file_path, engine="pyarrow")
+            embeddings_list.append(embeddings)
+        except Exception as e:
+            logger.error(
+                f"An error occurred while retrieving embeddings from {file_path}: {e}"
+            )
+
+    all_embeddings = pd.concat(embeddings_list, ignore_index=True)
+    return all_embeddings
 
 
 def retrieve_embedding_from_csv_file():
@@ -86,8 +91,8 @@ def retrieve_embedding_from_csv_file():
 
 def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     logger.info("Retrieving extracted embeddings")
-    embeddings = retrieve_embeddings_from_parquet_file(INPUT_FILE_PATH)
-    logger.info("Embeddings retrieved successfully")
+    embeddings = retrieve_embeddings_from_parquet_files(INPUT_FILE_PATHS)
+    logger.info(f"Embeddings retrieved successfully, total rows: {len(embeddings)}")
 
     benchmark_data = []
 

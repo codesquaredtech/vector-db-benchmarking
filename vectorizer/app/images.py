@@ -15,9 +15,12 @@ def get_image_paths(directory_path, supported_image_types) -> list[str]:
     return paths
 
 
-
 def convert_bytes_to_image(image_path):
-    image_pil = Image.open(image_path)
+    try:
+        image_pil = Image.open(image_path)
+    except Exception as e:
+        print("An error occurred: {e}. Continuing...")
+        return [], []
     numpy_image = np.array(image_pil)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=numpy_image)
     return numpy_image, mp_image
