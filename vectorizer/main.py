@@ -1,25 +1,20 @@
 from itertools import chain
-import pandas as pd
+
+import insightface
 import numpy as np
+import pandas as pd
+import timm
 import torch
 import torchvision.transforms as transforms
-from PIL import Image
-from deepface import DeepFace
-import insightface
-import timm
-
-from app.face_detection import (
-    create_embedding,
-    extract_faces_from_deepface_detections,
-    initialise_face_embedder,
-)
+from app.face_detection import create_embedding, initialise_face_embedder
 from app.images import convert_bytes_to_image, get_image_paths
 from app.logger import get_logger
+from PIL import Image
 
 SUPPORTED_IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".bmp", ".gif")
 REFERENT_IMAGE_DIRECTORIES = ["./images/NORTHSTORM/2024"]
 OUTPUT_FILE_PATH = "./output/embeddings_{face_extraction_model}_{image_name}_{current_datetime}.parquet"
-FACE_EXTRACTION_MODEL = "mediapipe"  # mediapipe, insightface, dino
+FACE_EXTRACTION_MODEL = "dino"  # mediapipe, insightface, dino
 GPU_ENABLED = torch.cuda.is_available()
 logger = get_logger()
 
@@ -32,7 +27,7 @@ def initialize_models():
     global models
 
     if FACE_EXTRACTION_MODEL == "mediapipe":
-        models["face_embedder"] = initialise_face_embedder()
+        models["mediapipe"] = initialise_face_embedder()
 
     elif FACE_EXTRACTION_MODEL == "insightface":
         logger.info("Initializing InsightFace model...")
@@ -58,6 +53,15 @@ def initialize_models():
             ]
         )
         models["dino"] = (model, transform, device)
+    
+    # Face detection model
+    detection_model = insightface.app.FaceAnalysis(
+            name="buffalo_l",
+            providers=["CUDAExecutionProvider"] if GPU_ENABLED else None,
+        )
+    detection_model.prepare(ctx_id=0 if GPU_ENABLED else -1)
+    models["detection"] = detection_model
+
 
 
 def process_image(image_path):
@@ -67,19 +71,22 @@ def process_image(image_path):
     vectors_to_insert = []
 
     if FACE_EXTRACTION_MODEL == "mediapipe":
-        face_embedder = models["face_embedder"]
-        detected_faces = DeepFace.extract_faces(
-            img_path=numpy_image,
-            enforce_detection=False,
-            detector_backend="retinaface",
-            align=True,
-        )
-        face_images = extract_faces_from_deepface_detections(detected_faces)
+        face_embedder = models["mediapipe"]
+        detector = models["detection"]
 
-        for image in face_images:
+        img = np.array(numpy_image)
+        detected_faces = detector.get(img)
+        
+        for face in detected_faces:
+            bbox = face.bbox.astype(int)
+            face_image = img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+            uint8_face_image = np.array(face_image, dtype=np.uint8)
+            
+            embedding = create_embedding(uint8_face_image, face_embedder)
+            
             vectors_to_insert.append(
                 {
-                    "embedding": create_embedding(image, face_embedder),
+                    "embedding": embedding,
                     "image_path": image_path,
                 }
             )
@@ -95,29 +102,24 @@ def process_image(image_path):
 
     elif FACE_EXTRACTION_MODEL == "dino":
         model, transform, device = models["dino"]
-        detected_faces = DeepFace.extract_faces(
-            img_path=numpy_image,
-            enforce_detection=False,
-            detector_backend="retinaface",
-            align=True,
-        )
-        face_images = extract_faces_from_deepface_detections(detected_faces)
 
-        for face_image in face_images:
+        detection_model = models["detection"]   
+        faces = detection_model.get(numpy_image)
+        
+        for face in faces:
+            face_image = face.normed_embedding
+            
             pil_image = Image.fromarray((face_image * 255).astype(np.uint8))
+            pil_image = pil_image.convert("RGB")
             input_tensor = transform(pil_image).unsqueeze(0).to(device)
 
             with torch.no_grad():
                 embedding = (
-                    model.forward_features(input_tensor)[:, 0, :]
-                    .cpu()
-                    .numpy()
-                    .flatten()
+                    model.forward_features(input_tensor)[:, 0, :].cpu().numpy().flatten()
                 )
                 vectors_to_insert.append(
                     {"embedding": embedding, "image_path": image_path}
                 )
-
     return vectors_to_insert
 
 
