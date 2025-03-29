@@ -107,9 +107,11 @@ def process_image(image_path):
         faces = detection_model.get(numpy_image)
         
         for face in faces:
-            face_image = face.normed_embedding
+            x1, y1, x2, y2 = map(int, face.bbox)
+
+            cropped_face = numpy_image[y1:y2, x1:x2]
             
-            pil_image = Image.fromarray((face_image * 255).astype(np.uint8))
+            pil_image = Image.fromarray(cropped_face)
             pil_image = pil_image.convert("RGB")
             input_tensor = transform(pil_image).unsqueeze(0).to(device)
 
