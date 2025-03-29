@@ -1,7 +1,7 @@
 networks:
   vector_db_testing:
     name: vector_db_testing
-    #external: true
+    external: true
 
 services:
   vectorizer:
@@ -13,7 +13,6 @@ services:
       - ./logs:/vectorizer/logs
       - ./output:/vectorizer/output
       - ./app:/vectorizer/app
-      - "/e/User/Slike/Arhiva:/vectorizer/media"
       # TODO: Add mapping for the image folder (if external, e.g., HDD)
     networks:
       - vector_db_testing
