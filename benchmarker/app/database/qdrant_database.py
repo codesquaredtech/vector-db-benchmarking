@@ -1,3 +1,4 @@
+import math
 from app.database.vector_database import VectorDatabase
 from app.logger import get_logger
 
@@ -50,7 +51,7 @@ class QdrantDatabase(VectorDatabase):
                 },
                 hnsw_config={
                     "m": 16,
-                    "ef_construct": 200,
+                    "ef_construct": 20000,
                 },  # Trebalo bi razmisliti i o ostalim potencijalnim konfiguracijama
             )
 
@@ -58,28 +59,36 @@ class QdrantDatabase(VectorDatabase):
             logger.error(f"An error occurred: {e}")
             raise e
 
-    def insert(self, collection_name: str, data):
-        ids = data.index.tolist()
-        embeddings = data["embedding"].tolist()
-        image_paths = data["image_path"].tolist()
-        images_as_payload = [{"image_path": image_path} for image_path in image_paths]
+    def insert(self, collection_name: str, data, batch_size: int = 500):
+        total_rows = len(data)
+        num_batches = math.ceil(total_rows / batch_size)
 
-        logger.info(f"Inserting {len(ids)} points into {collection_name} collection")
+        for i in range(num_batches):
+            start = i * batch_size
+            end = min((i + 1) * batch_size, total_rows)
+            batch = data.iloc[start:end]
 
-        try:
-            self.client.upsert(
-                collection_name=f"{collection_name}",
-                points=Batch(
-                    ids=ids,
-                    payloads=images_as_payload,
-                    vectors={
-                        VECTOR_NAME: embeddings,
-                    },
-                ),
+            ids = batch.index.tolist()
+            embeddings = batch["embedding"].tolist()
+            image_paths = batch["image_path"].tolist()
+            images_as_payload = [{"image_path": path} for path in image_paths]
+
+            logger.info(
+                f"Inserting batch {i + 1}/{num_batches} with {len(ids)} points into {collection_name}"
             )
-        except Exception as e:
-            logger.error(f"An error occurred: {e}")
-            raise e
+
+            try:
+                self.client.upsert(
+                    collection_name=collection_name,
+                    points=Batch(
+                        ids=ids,
+                        payloads=images_as_payload,
+                        vectors={VECTOR_NAME: embeddings},
+                    ),
+                )
+            except Exception as e:
+                logger.error(f"Error inserting batch {i + 1}: {e}")
+                raise e
 
     def delete(self, collection_name: str):
         logger.info(f"Deleting everything from {collection_name}")
@@ -131,8 +140,8 @@ class QdrantDatabase(VectorDatabase):
         logger.info(f"Parsing search results: {results}")
         similar_embeddings = []
         for point in results.points:
-            logger.info(
-                f"ID: {point.id}, Image path: {point.payload['image_path']}, Score: {point.score}"
-            )
+            #            logger.info(
+            #                f"ID: {point.id}, Image path: {point.payload['image_path']}, Score: {point.score}"
+            #            )
             similar_embeddings.append(point.payload["image_path"].split("/")[-1])
         return similar_embeddings

@@ -4,7 +4,7 @@ docker network create vector_db_testing
 # Functions for running individual services
 start_milvus() {
     echo "Starting Milvus service..."
-    docker compose -f "./milvus/docker-compose.yaml" up -d
+    docker compose -f "./milvus/docker-compose.yaml" up -d --build
 }
 
 start_weavite() {
@@ -44,7 +44,7 @@ start_pgvector() {
 
 start_chroma() {
     echo "Starting Chroma service..."
-    docker compose -f "./chroma/docker-compose.yaml" up -d
+    docker compose -f "./chroma/docker-compose.yaml" up -d --build
 }
 
 # Flags initialization
@@ -128,11 +128,11 @@ fi
 echo "Sleeping 30 seconds while everything is up and running."
 sleep 30
 
-echo "Starting vectorizer"
-docker compose -f "./vectorizer/docker-compose.yaml" up -d
+#echo "Starting vectorizer"
+#docker compose -f "./vectorizer/docker-compose.yaml" up -d
 
 echo "Starting benchmarker"
 docker compose -f "./benchmarker/docker-compose.yaml" up -d
 
-echo "Starting data visualiser"
-docker compose -f "./data_visualiser/docker-compose.yaml" up -d
+#echo "Starting data visualiser"
+#docker compose -f "./data_visualiser/docker-compose.yaml" up -d

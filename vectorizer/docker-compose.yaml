@@ -1,12 +1,12 @@
 networks:
   vector_db_testing:
     name: vector_db_testing
-    external: true
+#    external: true
 
 services:
   vectorizer:
     build: .
-    runtime: nvidia
+   # runtime: nvidia
     volumes:
       - ./images:/vectorizer/images
       - ./main.py:/vectorizer/main.py

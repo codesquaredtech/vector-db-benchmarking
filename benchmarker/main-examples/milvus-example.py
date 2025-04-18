@@ -13,19 +13,19 @@ insert_embeddings(db)
 Search benchmarking
 """
 
-search_params = search_params = {
+search_params = {
     "anns_field": "embedding",
     "metric_type": "COSINE",
-    "index_params": {"ef": 64},
+    "index_params": {"ef": 20000},
     "limit": None,
-    "threshold": 0.8,
+    "threshold": 0.6,
     "output_fields": ["id", "image_path"],
 }
 
 search_similar_embeddings(
     db,
     search_params,
-    num_threads=50,
+    num_threads=10,
     num_iterations=100,
 )
 '''
