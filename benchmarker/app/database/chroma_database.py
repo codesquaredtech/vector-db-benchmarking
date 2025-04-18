@@ -20,7 +20,7 @@ class ChromaDatabase(VectorDatabase):
             self.client = chromadb.HttpClient(
                 host=host,
                 port=port,
-                settings=Settings(allow_reset=True, anonymized_telemetry=False),
+                settings=Settings(anonymized_telemetry=False),
             )
 
             logger.info(f"Successfully connected to Chroma at {host}:{port}")
@@ -70,9 +70,9 @@ class ChromaDatabase(VectorDatabase):
 
         def reconnect():
             logger.info("Attempting to reconnect to Chroma...")
+            self.client.close()
+            time.sleep(5)
             self.connect()
-            if self.client is None:
-                raise ConnectionError("Reconnection to Chroma failed.")
 
         try:
             try:
@@ -105,14 +105,13 @@ class ChromaDatabase(VectorDatabase):
                         collection.add(
                             embeddings=embeddings, metadatas=image_paths, ids=str_ids
                         )
-                        break  # Success, exit retry loop
+                        break
                     except Exception as e:
                         logger.warning(
                             f"Error inserting batch {i + 1}: {e} (attempt {attempt + 1}/{retries})"
                         )
                         attempt += 1
 
-                        # Try reconnecting if it's a connection-related error
                         if "ConnectionError" in str(type(e)) or "Connection" in str(e):
                             try:
                                 reconnect()

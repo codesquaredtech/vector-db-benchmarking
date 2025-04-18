@@ -23,7 +23,7 @@ services:
       memlock:
         soft: -1
         hard: -1
-    mem_limit: 4g
+    mem_limit: 10g
     volumes:
       - esdata:/var/lib/elasticsearch/data
     ports:

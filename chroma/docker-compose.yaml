@@ -15,8 +15,8 @@ services:
       - chroma_data:/var/lib/chroma/data
     ports:
       - 8000:8000
-    shm_size: '2gb'
-    mem_limit: 4g
+    shm_size: '4gb'
+    mem_limit: 10g
     restart: on-failure:0
     ulimits:
       memlock:
