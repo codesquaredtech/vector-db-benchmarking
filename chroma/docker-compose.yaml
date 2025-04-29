@@ -1,3 +1,5 @@
+version: "3.8"
+
 networks:
   vector_db_testing:
     name: vector_db_testing
@@ -10,10 +12,16 @@ services:
     networks:
       - vector_db_testing
     volumes:
-    - chroma_data:/var/lib/chroma/data
+      - chroma_data:/var/lib/chroma/data
     ports:
-    - 8000:8000
+      - 8000:8000
+    shm_size: '4gb'
+    mem_limit: 10g
     restart: on-failure:0
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
 
 volumes:
   chroma_data:

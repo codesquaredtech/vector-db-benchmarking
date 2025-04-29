@@ -1,3 +1,5 @@
+import math
+
 from app.database.vector_database import VectorDatabase
 from pymilvus import (
     connections,
@@ -46,19 +48,27 @@ class MilvusDatabase(VectorDatabase):
         }
         collection.create_index(field_name="embedding", index_params=index_params)
 
-    def insert(self, collection_name: str, data):
-        ids = data.index.tolist()
-        embeddings = data["embedding"].tolist()
-        image_paths = data["image_path"].tolist()
-
+    def insert(self, collection_name: str, data, batch_size: int = 500):
         collection = Collection(name=collection_name)
-        collection.insert([ids, embeddings, image_paths])
+
+        total_rows = len(data)
+        num_batches = math.ceil(total_rows / batch_size)
+
+        for i in range(num_batches):
+            start = i * batch_size
+            end = min((i + 1) * batch_size, total_rows)
+
+            batch = data.iloc[start:end]
+
+            ids = batch.index.tolist()
+            embeddings = batch["embedding"].tolist()
+            image_paths = batch["image_path"].tolist()
+
+            collection.insert([ids, embeddings, image_paths])
 
     def delete(self, collection_name: str):
-        collection = Collection(name=collection_name)
-        collection.load()
-        collection.delete(expr="id >= 0")
-        # TODO: Or drop_collection ?
+        if utility.has_collection(collection_name):
+            utility.drop_collection(collection_name)
 
     def search(self, collection_name: str, embedding: list, params: dict):
         collection = Collection(name=collection_name)
@@ -101,8 +111,8 @@ class MilvusDatabase(VectorDatabase):
         similar_embeddings = []
         for result in results:
             for hit in result:
-                logger.info(
-                    f"ID: {hit.entity.get('id')}, Image path: {hit.entity.get('image_path')}, Score: {hit.score}"
-                )
+                # logger.info(
+                #    f"ID: {hit.entity.get('id')}, Image path: {hit.entity.get('image_path')}, Score: {hit.score}"
+                # )
                 similar_embeddings.append(hit.entity.get("image_path").split("/")[-1])
         return similar_embeddings

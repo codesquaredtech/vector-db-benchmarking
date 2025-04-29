@@ -1,6 +1,5 @@
-mediapipe==0.10.14
+mediapipe==0.10.21
 psycopg2-binary==2.9.9
-deepface==0.0.93
 tf-keras==2.17.0
 pymilvus==2.4.6
 pandas==2.2.3

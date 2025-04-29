@@ -80,6 +80,8 @@ class PGVectorDatabase(VectorDatabase):
                 con=self.sqlalchemy_engine,
                 if_exists="append",
                 index=False,
+                method="multi",  # groups multiple INSERTs into one query
+                chunksize=500,  # splits data into batches of 500 rows
             )
             logger.info(
                 f"Data from DataFrame inserted into '{collection_name}' successfully."
@@ -119,12 +121,12 @@ limit {params.get("limit", 1600)};
             with self.connection.cursor() as cur:
                 cur.execute(search_string, (embedding,))
                 results = cur.fetchall()
-                logger.info("#" * 25)
-                logger.info("Executed Query:")
-                logger.info(cur.query)
-                logger.info("-" * 15)
-                logger.info("Fetched Results:")
-                logger.info(results)
+                # logger.info("#" * 25)
+                # logger.info("Executed Query:")
+                # logger.info(cur.query)
+                # logger.info("-" * 15)
+                # logger.info("Fetched Results:")
+                # logger.info(results)
                 self.connection.commit()
         except Exception as e:
             logger.error(f"Error searching data: {e}")
@@ -135,6 +137,6 @@ limit {params.get("limit", 1600)};
     def parse_search_results(self, results: list):
         similar_embeddings = []
         for result in results:
-            logger.info(f"Image path: {result[0]}, Score: {result[1]}")
+            # logger.info(f"Image path: {result[0]}, Score: {result[1]}")
             similar_embeddings.append(result[0].split("/")[-1])
         return similar_embeddings

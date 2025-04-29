@@ -1,6 +1,7 @@
 from app.database.vector_database import VectorDatabase
 from elasticsearch import Elasticsearch, helpers
 from app.logger import get_logger
+import time
 
 logger = get_logger()
 
@@ -9,27 +10,42 @@ class ElasticsearchDatabase(VectorDatabase):
     def __init__(self):
         self.client = None
 
-    def connect(self, host="elasticsearch_db", port=9200):
-        try:
-            self.client = Elasticsearch(
-                [{"host": host, "port": port, "scheme": "http"}]
-            )
-            if not self.client.ping():
-                raise ConnectionError(
-                    f"Could not connect to Elasticsearch at {host}:{port}"
+    def connect(self, host="elasticsearch_db", port=9200, retries=10, delay=5):
+        attempt = 0
+        while attempt < retries:
+            try:
+                self.client = Elasticsearch(
+                    [
+                        {
+                            "host": host,
+                            "port": port,
+                            "scheme": "http",
+                        }
+                    ],
+                    timeout=18000,
                 )
+                if self.client.ping():
+                    logger.info(
+                        f"Successfully connected to Elasticsearch at {host}:{port}"
+                    )
+                    return
+                else:
+                    raise ConnectionError(
+                        f"Could not connect to Elasticsearch at {host}:{port}"
+                    )
 
-            logger.info(f"Successfully connected to Elasticsearch at {host}:{port}")
-
-        except ConnectionError as ce:
-            logger.error(f"Error connecting to Elasticsearch at {host}:{port}: {ce}")
-            self.client = None
-
-        except Exception as e:
-            logger.error(
-                f"Unexpected error occured while connecting to Elasticsearch at {host}:{port}: {e}"
-            )
-            self.client = None
+            except Exception as e:
+                attempt += 1
+                logger.warning(
+                    f"Attempt {attempt}/{retries} failed to connect to Elasticsearch at {host}:{port}: {e}"
+                )
+                self.client = None
+                if attempt < retries:
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        f"Failed to connect to Elasticsearch after {retries} attempts."
+                    )
 
     def drop_collection(self, collection_name: str):
         if self.client is None:
@@ -54,10 +70,10 @@ class ElasticsearchDatabase(VectorDatabase):
             "mappings": {
                 "properties": {
                     "embedding": {
-                        "type": "dense_vector", 
-                        "dims": vector_size, 
-                        "index": "true", 
-                        "similarity" : "cosine" #cosine is default
+                        "type": "dense_vector",
+                        "dims": vector_size,
+                        "index": "true",
+                        "similarity": "cosine",  # cosine is default
                     },
                     "image_path": {"type": "keyword"},
                 }
@@ -72,33 +88,57 @@ class ElasticsearchDatabase(VectorDatabase):
                 f"Index '{collection_name}' already exists. Skipping index creation."
             )
 
-    def insert(self, collection_name: str, data):
+    def _generate_actions(self, data, index_name):
+        for idx, row in data.iterrows():
+            # logger.info(f"Idx, row: {idx}, {row}")
+            yield {
+                "_index": index_name,
+                "_id": idx,
+                "_source": {
+                    "embedding": row["embedding"],
+                    "image_path": row["image_path"],
+                },
+            }
+
+    def insert(self, collection_name: str, data, batch_size: int = 500):
         if self.client is None:
             logger.error("Elasticsearch client is not connected.")
             return
 
         if data.empty:
             logger.warning("Data is empty. Skipping insert.")
+            return
 
         index_name = collection_name.lower()
-        rows = data.to_dict(orient="records")
-        ids = data.index.tolist()
+        total = len(data)
 
-        actions = [
-            {
-                "_index": index_name,
-                "_id": ids[i],
-                "_source": {
-                    "embedding": row["embedding"],
-                    "image_path": row["image_path"],
-                },
-            }
-            for i, row in enumerate(rows)
-        ]
+        logger.info(
+            f"Inserting {total} documents into '{collection_name}' in batches of {batch_size}."
+        )
 
         try:
-            helpers.bulk(self.client, actions)
-            logger.info(f"Successfully inserted data into '{collection_name}'")
+            for start in range(0, total, batch_size):
+                end = min(start + batch_size, total)
+                batch = data.iloc[start:end]
+
+                # Convert batch to actions without loading everything into memory
+                actions = (
+                    {
+                        "_index": index_name,
+                        "_id": idx,
+                        "_source": {
+                            "embedding": row["embedding"],
+                            "image_path": row["image_path"],
+                        },
+                    }
+                    for idx, row in batch.iterrows()
+                )
+
+                helpers.bulk(self.client, actions)
+                logger.info(
+                    f"Inserted batch {start // batch_size + 1} ({len(batch)} documents) into '{collection_name}'."
+                )
+
         except Exception as e:
             logger.error(f"Error inserting data into Elasticsearch: {e}")
 
@@ -108,10 +148,7 @@ class ElasticsearchDatabase(VectorDatabase):
             return
 
         try:
-            self.client.delete_by_query(
-                index=collection_name.lower(), body={"query": {"match_all": {}}}
-            )
-            logger.info(f"All data from '{collection_name}' has been deleted successfully.")
+            self.client.indices.delete(index=collection_name.lower())
         except Exception as e:
             logger.error(f"Error deleting data from Elasticsearch: {e}")
 
@@ -127,17 +164,17 @@ class ElasticsearchDatabase(VectorDatabase):
         results = []
 
         knn = {
-            "field" : "embedding",
+            "field": "embedding",
             "query_vector": embedding,
             "k": limit,
-            "num_candidates": num_candidates
+            "num_candidates": num_candidates,
         }
 
         body = {
             "size": limit,
             "knn": knn,
             "_source": ["image_path"],
-            "min_score": certainty
+            "min_score": certainty,
         }
 
         try:
@@ -165,7 +202,7 @@ class ElasticsearchDatabase(VectorDatabase):
             image_path = result["image_path"]
             score = result["score"]
 
-            logger.info(f"Image path: {image_path}, Score: {score}")
+            # logger.info(f"Image path: {image_path}, Score: {score}")
 
             if image_path:
                 similar_embeddings.append(image_path.split("/")[-1])

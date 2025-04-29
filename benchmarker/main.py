@@ -1,6 +1,7 @@
 import datetime
 import json
 import time
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
@@ -31,17 +32,29 @@ from app.database.elasticsearch_database import ElasticsearchDatabase
 Modify global variables if needed.
 """
 
-INPUT_FILE_PATH = "./input/embeddings_insightface_2025-02-13_11-11-54.parquet"
+INPUT_FILE_PATHS = [
+    "./relative/path/to/embeddimgs_1.parquet",
+    "./relative/path/to/embeddimgs_2.parquet",
+    "./relative/path/to/embeddimgs_3.parquet",
+]
+
+
 VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH = (
     "./results/vector_storing_and_deletion_results_"
 )
 VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH = "./results/vector_search_results_"
-EMBEDDING_TO_COMPARE_WITH_PATH = "./app/search_data/embedding_compare_with.csv"
-LABELED_DATASET_PATH = "./app/search_data/labeled_pictures.csv"
+EMBEDDINGS_TO_COMPARE_WITH_PATH = [
+    "./app/search_data/embedding_insightface_man.csv",
+    "./app/search_data/embedding_insightface_woman.csv",
+]
+LABELED_DATASET_PATHS = {
+    "man.JPG": "./app/search_data/small_man_updated.csv",
+    "woman.JPG": "./app/search_data/small_woman_updated.csv",
+}
 
 COLLECTION_NAME = "Faces"
-NUM_ITERATIONS = 10
-DATABASE_FOR_BENCHMARKING = "MILVUS"
+NUM_ITERATIONS = 3
+DATABASE_FOR_BENCHMARKING = "ELASTICSEARCH"
 VECTOR_SIZE = 512  # 1280 for mediapipe, 512 for insightface, 768 for dino
 
 
@@ -62,18 +75,23 @@ def get_vector_database(db_type: str):
         raise ValueError(f"Unsupported vector database: {db_type}")
 
 
-def retrieve_embeddings_from_parquet_file(file_path):
-    try:
-        embeddings = pd.read_parquet(file_path, engine="pyarrow")
-        return embeddings
-    except Exception as e:
-        logger.error(
-            f"An error occurred while retrieving embeddings from {file_path}: {e}"
-        )
+def retrieve_embeddings_from_parquet_files(file_paths):
+    embeddings_list = []
+    for file_path in file_paths:
+        try:
+            embeddings = pd.read_parquet(file_path, engine="pyarrow")
+            embeddings_list.append(embeddings)
+        except Exception as e:
+            logger.error(
+                f"An error occurred while retrieving embeddings from {file_path}: {e}"
+            )
+
+    all_embeddings = pd.concat(embeddings_list, ignore_index=True)
+    return all_embeddings
 
 
-def retrieve_embedding_from_csv_file():
-    df = pd.read_csv(EMBEDDING_TO_COMPARE_WITH_PATH)
+def retrieve_embedding_from_csv_file(embedding_path: str):
+    df = pd.read_csv(embedding_path)
 
     df["embedding"] = df["embedding"].apply(lambda x: np.array(json.loads(x)))
 
@@ -86,8 +104,8 @@ def retrieve_embedding_from_csv_file():
 
 def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     logger.info("Retrieving extracted embeddings")
-    embeddings = retrieve_embeddings_from_parquet_file(INPUT_FILE_PATH)
-    logger.info("Embeddings retrieved successfully")
+    embeddings = retrieve_embeddings_from_parquet_files(INPUT_FILE_PATHS)
+    logger.info(f"Embeddings retrieved successfully, total rows: {len(embeddings)}")
 
     benchmark_data = []
 
@@ -193,19 +211,18 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
 
     logger.info(f"Benchmark results saved to {complete_file_path}")
 
-    db.insert(COLLECTION_NAME, embeddings)
-
 
 def search_embedding(db, embedding, search_params, image_path):
     start_time = time.perf_counter()
     raw_predicted_results = db.search(COLLECTION_NAME, embedding, search_params)
     end_time = time.perf_counter()
 
-    # parsed_predicted_results - list of unique image names where the faces has been found
+    # parsed_predicted_results - list of unique image names where the faces have been found
     parsed_predicted_results = db.parse_search_results(raw_predicted_results)
 
-    real_results = pd.read_csv(LABELED_DATASET_PATH)
     target_picture = image_path.split("/")[-1]
+    logger.info(f"target picture {target_picture}")
+    real_results = pd.read_csv(LABELED_DATASET_PATHS[target_picture])
     real_results[f"predicted_{target_picture}"] = real_results.apply(
         lambda row: 1 if row["picture_name"] in parsed_predicted_results else 0,
         axis=1,
@@ -237,81 +254,85 @@ def search_similar_embeddings(
     num_threads=10,
     num_iterations=100,
 ):
-    image_embedding, image_path = retrieve_embedding_from_csv_file()
-    benchmark_data = []
+    embeddings = retrieve_embeddings_from_parquet_files(INPUT_FILE_PATHS)
+    db.connect()
+    db.create_collection(COLLECTION_NAME, VECTOR_SIZE)
+    db.insert(COLLECTION_NAME, embeddings)
+    for embedding_path in EMBEDDINGS_TO_COMPARE_WITH_PATH:
+        logger.info(f"Processing {embedding_path} path...")
+        image_embedding, image_path = retrieve_embedding_from_csv_file(embedding_path)
+        benchmark_data = []
 
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
-        futures = [
-            executor.submit(
-                search_embedding, db, image_embedding, search_params, image_path
-            )
-            for _ in range(num_iterations)
-        ]
-
-        start_time = time.perf_counter()
-        successful_requests = 0
-
-        for i, future in enumerate(as_completed(futures)):
-            try:
-                search_time, precision, recall, f1, specificity, far, frr = (
-                    future.result()
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = [
+                executor.submit(
+                    search_embedding, db, image_embedding, search_params, image_path
                 )
-                successful_requests += 1
+                for _ in range(num_iterations)
+            ]
 
-                benchmark_data.append(
-                    {
-                        "iteration": i + 1,
-                        "search_time": search_time,
-                        "precision": precision,
-                        "recall": recall,
-                        "f1_score": f1,
-                        "specificity": specificity,
-                        "far": far,
-                        "frr": frr,
-                    }
-                )
-                logger.info(
-                    f"Iteration {i + 1} - Search Time: {search_time}s, Precision: {precision}, Recall: {recall}, F1: {f1}, Specificity: {specificity}, FAR: {far}, FRR: {frr}"
-                )
-            except Exception as e:
-                logger.error(f"Error during search on iteration {i + 1}: {e}")
+            start_time = time.perf_counter()
+            successful_requests = 0
 
-        end_time = time.perf_counter()
+            for i, future in enumerate(as_completed(futures)):
+                try:
+                    search_time, precision, recall, f1, specificity, far, frr = (
+                        future.result()
+                    )
+                    successful_requests += 1
 
-    elapsed_time = end_time - start_time
-    rps = successful_requests / elapsed_time if elapsed_time > 0 else 0
+                    benchmark_data.append(
+                        {
+                            "iteration": i + 1,
+                            "search_time": search_time,
+                            "precision": precision,
+                            "recall": recall,
+                            "f1_score": f1,
+                            "specificity": specificity,
+                            "far": far,
+                            "frr": frr,
+                        }
+                    )
+                    logger.info(
+                        f"Iteration {i + 1} - Search Time: {search_time}s, Precision: {precision}, Recall: {recall}, F1: {f1}, Specificity: {specificity}, FAR: {far}, FRR: {frr}"
+                    )
+                except Exception as e:
+                    logger.error(f"Error during search on iteration {i + 1}: {e}")
 
-    search_times = [data["search_time"] for data in benchmark_data]
+            end_time = time.perf_counter()
 
-    stats = {
-        "search_time_mean": np.mean(search_times),
-        "search_time_std": np.std(search_times),
-        "search_time_p90": np.percentile(search_times, 90),
-        "search_time_p95": np.percentile(search_times, 95),
-        "search_time_p99": np.percentile(search_times, 99),
-        "rps": rps,
-        "total_time": elapsed_time,
-        "successful_requests": successful_requests,
-    }
+        elapsed_time = end_time - start_time
+        rps = successful_requests / elapsed_time if elapsed_time > 0 else 0
 
-    benchmark_df = pd.DataFrame(benchmark_data)
-    stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
+        search_times = [data["search_time"] for data in benchmark_data]
 
-    complete_file_path = (
-        f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_database_{DATABASE_FOR_BENCHMARKING}_"
-        + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        + ".csv"
-    )
+        stats = {
+            "search_time_mean": np.mean(search_times),
+            "search_time_std": np.std(search_times),
+            "search_time_p90": np.percentile(search_times, 90),
+            "search_time_p95": np.percentile(search_times, 95),
+            "search_time_p99": np.percentile(search_times, 99),
+            "rps": rps,
+            "total_time": elapsed_time,
+            "successful_requests": successful_requests,
+        }
 
-    benchmark_df.to_csv(complete_file_path, index=False)
-    stats_df.to_csv(complete_file_path, mode="a", header=False, index=False)
+        benchmark_df = pd.DataFrame(benchmark_data)
+        stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
 
-    logger.info(f"Search benchmark results and stats saved to {complete_file_path}")
-    logger.info(
-        f"RPS: {rps}, Total Time: {elapsed_time}s, Successful Requests: {successful_requests}"
-    )
+        complete_file_path = (
+            f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_database_{DATABASE_FOR_BENCHMARKING}_"
+            + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            + ".csv"
+        )
 
-    return stats
+        benchmark_df.to_csv(complete_file_path, index=False)
+        stats_df.to_csv(complete_file_path, mode="a", header=False, index=False)
+
+        logger.info(f"Search benchmark results and stats saved to {complete_file_path}")
+        logger.info(
+            f"RPS: {rps}, Total Time: {elapsed_time}s, Successful Requests: {successful_requests}"
+        )
 
 
 """
@@ -320,31 +341,12 @@ Modify code below for the purposes of other vector database benchmarking.
 
 if __name__ == "__main__":
     logger = get_logger()
-
     db = get_vector_database(DATABASE_FOR_BENCHMARKING)
-
-    """
-    Insert + Delete benchmarking
-    """
-
-    insert_embeddings(db)
-
-    """
-    Search benchmarking
-    """
-
-    search_params = search_params = {
-        "anns_field": "embedding",
-        "metric_type": "COSINE",
-        "index_params": {"ef": 64},
-        "limit": None,
-        "threshold": 0.8,
-        "output_fields": ["id", "image_path"],
-    }
+    search_params = {"certainty": 0.6, "limit": 10000, "num_candidates": 10000}
 
     search_similar_embeddings(
         db,
         search_params,
-        num_threads=50,
+        num_threads=10,
         num_iterations=100,
     )

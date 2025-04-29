@@ -1,3 +1,6 @@
+import math
+import time
+
 import chromadb
 from chromadb.config import Settings
 
@@ -17,7 +20,7 @@ class ChromaDatabase(VectorDatabase):
             self.client = chromadb.HttpClient(
                 host=host,
                 port=port,
-                settings=Settings(allow_reset=True, anonymized_telemetry=False),
+                settings=Settings(anonymized_telemetry=False),
             )
 
             logger.info(f"Successfully connected to Chroma at {host}:{port}")
@@ -50,7 +53,14 @@ class ChromaDatabase(VectorDatabase):
         except Exception as e:
             logger.error(f"Failed to create collection '{collection_name}': {e}")
 
-    def insert(self, collection_name: str, data):
+    def insert(
+        self,
+        collection_name: str,
+        data,
+        batch_size: int = 500,
+        retries: int = 5,
+        delay: float = 10,
+    ):
         if self.client is None:
             raise ConnectionError("Chroma client is not connected.")
 
@@ -58,26 +68,78 @@ class ChromaDatabase(VectorDatabase):
             logger.warning("Data is empty. Skipping insert.")
             return
 
+        def reconnect():
+            logger.info("Attempting to reconnect to Chroma...")
+            self.client.close()
+            time.sleep(5)
+            self.connect()
+
         try:
-            collection = self.client.get_or_create_collection(name=collection_name)
+            try:
+                collection = self.client.get_or_create_collection(name=collection_name)
+            except Exception as e:
+                logger.warning(f"Error during collection access: {e}")
+                reconnect()
+                collection = self.client.get_or_create_collection(name=collection_name)
 
-            ids = data.index.tolist()
-            str_ids = [str(element) for element in ids]
-            embeddings = data["embedding"].tolist()
-            image_paths = [{"image_path": path} for path in data["image_path"]]
+            total_rows = len(data)
+            num_batches = math.ceil(total_rows / batch_size)
 
-            collection.add(embeddings=embeddings, metadatas=image_paths, ids=str_ids)
+            for i in range(num_batches):
+                start = i * batch_size
+                end = min((i + 1) * batch_size, total_rows)
+                batch = data.iloc[start:end]
+
+                ids = batch.index.tolist()
+                str_ids = [str(i) for i in ids]
+                embeddings = batch["embedding"].tolist()
+                image_paths = [{"image_path": path} for path in batch["image_path"]]
+
+                logger.info(
+                    f"Inserting batch {i + 1}/{num_batches} with {len(str_ids)} points into {collection_name}"
+                )
+
+                attempt = 0
+                while attempt <= retries:
+                    try:
+                        collection.add(
+                            embeddings=embeddings, metadatas=image_paths, ids=str_ids
+                        )
+                        break
+                    except Exception as e:
+                        logger.warning(
+                            f"Error inserting batch {i + 1}: {e} (attempt {attempt + 1}/{retries})"
+                        )
+                        attempt += 1
+
+                        if "ConnectionError" in str(type(e)) or "Connection" in str(e):
+                            try:
+                                reconnect()
+                                collection = self.client.get_or_create_collection(
+                                    name=collection_name
+                                )
+                            except Exception as reconnect_error:
+                                logger.error(
+                                    f"Reconnect attempt failed: {reconnect_error}"
+                                )
+                                raise reconnect_error
+
+                        if attempt > retries:
+                            logger.error(f"Final attempt failed for batch {i + 1}: {e}")
+                            raise e
+                        time.sleep(delay)
 
         except Exception as e:
             logger.error(f"Failed to insert data into '{collection_name}': {e}")
+            raise e
 
     def delete(self, collection_name: str):
         if self.client is None:
             raise ConnectionError("Chroma client is not connected.")
 
         try:
-            collection = self.client.get_collection(name=collection_name)
-            collection.delete(where={"id": {"$ne": ""}})
+            self.client.delete_collection(name=collection_name)
+            # collection.delete(where={"id": {"$ne": ""}})
             logger.info(f"Deleted all records from collection '{collection_name}'.")
 
         except Exception as e:
@@ -114,7 +176,7 @@ class ChromaDatabase(VectorDatabase):
             image_path = result["metadata"].get("image_path")
             score = result["distance"]
 
-            logger.info(f"Image path: {image_path}, Score: {score}")
+            # logger.info(f"Image path: {image_path}, Score: {score}")
 
             if image_path:
                 similar_embeddings.append(image_path.split("/")[-1])

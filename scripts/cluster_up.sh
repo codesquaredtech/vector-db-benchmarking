@@ -4,7 +4,7 @@ docker network create vector_db_testing
 # Functions for running individual services
 start_milvus() {
     echo "Starting Milvus service..."
-    docker compose -f "./milvus/docker-compose.yaml" up -d
+    docker compose -f "./milvus/docker-compose.yaml" up -d --build
 }
 
 start_weavite() {
@@ -44,7 +44,7 @@ start_pgvector() {
 
 start_chroma() {
     echo "Starting Chroma service..."
-    docker compose -f "./chroma/docker-compose.yaml" up -d
+    docker compose -f "./chroma/docker-compose.yaml" up -d --build
 }
 
 # Flags initialization

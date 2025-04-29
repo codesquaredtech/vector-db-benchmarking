@@ -1,7 +1,12 @@
+version: "3.8"
+
 networks:
   vector_db_testing:
     name: vector_db_testing
     external: true
+
+volumes:
+  esdata:
 
 services:
   elasticsearch:
@@ -13,18 +18,21 @@ services:
       - cluster.name=elasticsearch_cluster
       - bootstrap.memory_lock=true
       - xpack.security.enabled=false
-    networks:
-      - vector_db_testing
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g  # Set fixed 2GB heap
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    mem_limit: 10g
     volumes:
       - esdata:/var/lib/elasticsearch/data
     ports:
       - "9200:9200"
+    networks:
+      - vector_db_testing
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://elasticsearch_db:9200/_cluster/health?wait_for_status=yellow&timeout=50s"]
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=50s"]
       interval: 30s
       timeout: 20s
       retries: 5
-
-volumes:
-  esdata:

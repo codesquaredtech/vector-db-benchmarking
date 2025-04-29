@@ -1,13 +1,12 @@
-
 networks:
   vector_db_testing:
     name: vector_db_testing
-    external: true
-
+#    external: true
 
 services:
   vectorizer:
     build: .
+   # runtime: nvidia
     volumes:
       - ./images:/vectorizer/images
       - ./main.py:/vectorizer/main.py
@@ -17,4 +16,4 @@ services:
       # TODO: Add mapping for the image folder (if external, e.g., HDD)
     networks:
       - vector_db_testing
-    command: ["python", "main.py"]
+    command: ["python3", "main.py"]
