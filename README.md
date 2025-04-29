@@ -37,3 +37,6 @@ Main point of this component is to generate plots that visualise the received re
 - <b>results directory</b> - results from the benchmarking component should be put here.
 - <b>main.py</b> - to generate plots, functions that are present in this file should be called (there are examples here already).
 - <b>plots directory</b> - all of the generated plots will be placed in this directory.
+
+## Experiment Results
+Experiment results from the research paper are present in the ```Experiment Results``` folder.
