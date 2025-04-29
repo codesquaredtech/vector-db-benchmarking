@@ -1,6 +1,7 @@
 import datetime
 import json
 import time
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
@@ -32,70 +33,9 @@ Modify global variables if needed.
 """
 
 INPUT_FILE_PATHS = [
-    "./input/embeddings_dino_Krstenje - 21. jun 2020. Bogdan_2025-04-05_11-16-39.parquet",
-    "./input/embeddings_dino_Krstenje - 8. oktobar 2020. - Krtolica - Indjija_2025-04-05_11-16-39.parquet",
-    "./input/embeddings_dino_Svadba - 11. Januar 2020. - Nikola_2025-04-05_11-16-39.parquet",
-    "./input/embeddings_dino_Svadba - 11. Oktobar 2020. - Jelena i Stefan Bo Inside_2025-04-05_11-16-39.parquet",
-    "./input/embeddings_dino_Svadba - 11. Septembar 2020. - Alaska Terasa - Mirjana i Aleksandar_2025-04-05_11-16-39.parquet",
-    "./input/embeddings_dino_Svadba - 11. septembar 2020. - Jelena i Damir - Greenday_2025-04-05_11-16-39.parquet",
-    "./input/embeddings_dino_Svadba - 12. jun 2021. - Ivana, Vidikovac_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 12. Septembar 2020. - Jasmina i Bojan - Kristal_2025-04-05_11-16-39.parquet",
-    "./input/embeddings_dino_Svadba - 12. Septembar 2020. - Jelena i Milan - Piknik_2025-04-05_22-18-03.parquet",
-    "./input/embeddings_dino_Svadba - 12. Septembar 2020. - Jelena i Srdjan - restoran Dunav_2025-04-06_10-39-26.parquet",
-    "./input/embeddings_dino_Svadba - 13. jun 2020. - Malinovicevi_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 13. Septembar 2020. - Katarina i Veljko - Zal za mladost_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 13. Septembar 2020. - Kovilj_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 13. septembar 2020. - Marija i Darko - Vrdnicka kula_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 14. Novembar 2020. - Zeljka i Nebojsa_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 15. maj 2021. Sandra i Dragan_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 15. Novembar 2020. - Danijel i Dijana_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 16. Oktobar 2020. - Tamara i Sinisa - GreenDay_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 17. April 2021. - Brana i Nemanja_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 17. Oktobar 2020. - Nina i Nenad - RiverSide pool_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 18. oktobar 2020. - Ana Marija i Juda - Vidikovac_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 2. februar 2020. - Milica i Jovan - Vidikovac_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 2. Oktobar 2020. - Maja (marijana) i Bojan_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 20. septembar 2020. Ubovic_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 21. Avgust 2021. - Natasa i Predrag, Marina_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 21. Avgust 2021. - Nevena i Nemanja, Sombor_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 21. Jun 2021. - Reset, Jelena i_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 21. maj 2021. Tamara i Nikola - salac Bulac_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 22. Novembar 2020. - Jovana i Vladimir_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 23. Januar 2021. - Teodora i D_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 23. Oktobar 2021. - Jovana i Milos_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 24. Septembar 2021. - Dijana i Milos_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 25. April 2020.  - Tijana i Petar - samo maticar_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 25. Jun 2021. - Teodora i Nemanja Jovic - Vidikovac_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 25. Septembar 2020. - Kesten_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 25. septembar 2021. - Jelena i Dusan - Fontana, B. Palanka_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 25. Septembar 2021. - Stasa i Igor, Alaska Barka_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 26. jul 2020. - Marko Marinkovic_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 26. jul 2020. - Slobodanka i Ilija_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 26. jun 2021. - Zorana i Nikola_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 26. septembar 2021. - Milana i Sretko, Kum_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 26. septembar 2021. - Milica i Aleksandar - Alaska barka_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 27. jun 2020. - Eksluziv - Teodora i Bojan_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 27. Jun 2021. - Gordana i Momir - Zal za Mladost_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 28. Avgust 2021. - Marijana i Milos, Subotica_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 28. jun 2020. - Duska i Marko - Kum_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 28. jun 2020. - Vidikovac - Sandra i Miroslav_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 28. jun 2021. - Jovana i Vladimir_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 29. Avgust 2020 - Bojana i Marko - Sasin Salas_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 29. avgust 2020. - Iva i Mihailo_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 29. avgust 2020. - Zal za Mladost - Ana i Aleksandar_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 29. maj 2021. Jelena i Vladan - B. Petrovac_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 3. jul 2020. - Sanja i Nemanja - Alaska Barka_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 3. Jul 2021. - Bojana i Mladen_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 3. oktobar 2020. - Aleksandar - Alaska Barka_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 3. Oktobar 2020. - Tijana i Zarko_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 31. Maj 2020. - Kostresevic_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 4. jun 2020. - Sonja i Milos - yellow house_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 4. Oktobar 2020. - Katarina i Srdjan - Ada_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 5. jun 2021. - Andjela, West Exit_2025-03-29_16-25-13.parquet",
-    "./input/embeddings_dino_Svadba - 5. Septembar 2020. - Dragana i Nikola_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 6. jun 2020. - Beskraj_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadba - 6. Septembar 2020. - Bojana_2025-04-06_12-01-18.parquet",
-    "./input/embeddings_dino_Svadbe - 16. maj 2020. - Biljana i Damir - Session_2025-04-06_12-01-18.parquet",
+    "./relative/path/to/embeddimgs_1.parquet",
+    "./relative/path/to/embeddimgs_2.parquet",
+    "./relative/path/to/embeddimgs_3.parquet",
 ]
 
 
@@ -104,18 +44,18 @@ VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH = (
 )
 VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH = "./results/vector_search_results_"
 EMBEDDINGS_TO_COMPARE_WITH_PATH = [
-    "./app/search_data/embedding_dino_man.csv",
-    "./app/search_data/embedding_dino_woman.csv",
+    "./app/search_data/embedding_insightface_man.csv",
+    "./app/search_data/embedding_insightface_woman.csv",
 ]
 LABELED_DATASET_PATHS = {
-    "man.JPG": "./app/search_data/medium_man_updated.csv",
-    "woman.JPG": "./app/search_data/medium_woman_updated.csv",
+    "man.JPG": "./app/search_data/small_man_updated.csv",
+    "woman.JPG": "./app/search_data/small_woman_updated.csv",
 }
 
 COLLECTION_NAME = "Faces"
-NUM_ITERATIONS = 5
+NUM_ITERATIONS = 3
 DATABASE_FOR_BENCHMARKING = "ELASTICSEARCH"
-VECTOR_SIZE = 768  # 1280 for mediapipe, 512 for insightface, 768 for dino
+VECTOR_SIZE = 512  # 1280 for mediapipe, 512 for insightface, 768 for dino
 
 
 def get_vector_database(db_type: str):
@@ -147,7 +87,6 @@ def retrieve_embeddings_from_parquet_files(file_paths):
             )
 
     all_embeddings = pd.concat(embeddings_list, ignore_index=True)
-    # logger.info(all_embeddings.loc[0])
     return all_embeddings
 
 
@@ -411,95 +350,3 @@ if __name__ == "__main__":
         num_threads=10,
         num_iterations=100,
     )
-"""
-    benchmark_data = []
-    benchmark_data.append(
-        {
-            "iteration": 1,
-            "initialisation_time": 0.260406,
-            "insertion_time": 6121.465655,
-            "deletion_time": 4.865525,
-            "memory_usage_initialisation": 0.38671875,
-            "memory_usage_insertion": -1819.5390625,
-        }
-    )
-    benchmark_data.append(
-        {
-            "iteration": 2,
-            "initialisation_time": 0.316565,
-            "insertion_time": 6336.585194,
-            "deletion_time": 2.594859,
-            "memory_usage_initialisation": 0.0,
-            "memory_usage_insertion": -1802.453125,
-        }
-    )
-    benchmark_data.append(
-        {
-            "iteration": 3,
-            "initialisation_time": 0.361071,
-            "insertion_time": 6211.31512,
-            "deletion_time": 4.722099,
-            "memory_usage_initialisation": 0.0,
-            "memory_usage_insertion": 38.80859375,
-        }
-    )
-    benchmark_data.append(
-        {
-            "iteration": 4,
-            "initialisation_time": 0.347883,
-            "insertion_time": 6192.77448,
-            "deletion_time": 0.178218,
-            "memory_usage_initialisation": 0.20703125,
-            "memory_usage_insertion": 16.37109375,
-        }
-    )
-    benchmark_data.append(
-        {
-            "iteration": 5,
-            "initialisation_time": 0.302349,
-            "insertion_time": 6274.726453,
-            "deletion_time": 0.192311,
-            "memory_usage_initialisation": 0.0,
-            "memory_usage_insertion": -1184.583152,
-        }
-    )
-    benchmark_df = pd.DataFrame(benchmark_data)
-    complete_file_path = (
-        VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH
-        + "_size_1732832__database_QDRANT_"
-        + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
-        + ".csv"
-    )
-    benchmark_df.to_csv(complete_file_path, index=False)
-    initialisation_times = benchmark_df["initialisation_time"]
-    insertion_times = benchmark_df["insertion_time"]
-    memory_usage_initialisation = benchmark_df["memory_usage_initialisation"]
-    memory_usage_insertion = benchmark_df["memory_usage_insertion"]
-    deletion_times = benchmark_df["deletion_time"]
-
-    stats = {
-        "initialisation_mean": np.mean(initialisation_times),
-        "initialisation_std": np.std(initialisation_times),
-        "insertion_mean": np.mean(insertion_times),
-        "insertion_std": np.std(insertion_times),
-        "deletion_mean": np.mean(deletion_times),
-        "deletion_std": np.std(deletion_times),
-        "initialisation_p90": np.percentile(initialisation_times, 90),
-        "insertion_p90": np.percentile(insertion_times, 90),
-        "deletion_p90": np.percentile(deletion_times, 90),
-        "initialisation_p95": np.percentile(initialisation_times, 95),
-        "insertion_p95": np.percentile(insertion_times, 95),
-        "deletion_p95": np.percentile(deletion_times, 95),
-        "initialisation_p99": np.percentile(initialisation_times, 99),
-        "insertion_p99": np.percentile(insertion_times, 99),
-        "deletion_p99": np.percentile(deletion_times, 99),
-        "memory_usage_init_mean": np.mean(memory_usage_initialisation),
-        "memory_usage_init_std": np.std(memory_usage_initialisation),
-        "memory_usage_insert_mean": np.mean(memory_usage_insertion),
-        "memory_usage_insert_std": np.std(memory_usage_insertion),
-    }
-
-    stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
-
-    stats_df.to_csv(complete_file_path, mode="a", header=False, index=False)
-"""

@@ -138,7 +138,6 @@ class ChromaDatabase(VectorDatabase):
             raise ConnectionError("Chroma client is not connected.")
 
         try:
-            # collection = self.client.get_collection(name=collection_name)
             self.client.delete_collection(name=collection_name)
             # collection.delete(where={"id": {"$ne": ""}})
             logger.info(f"Deleted all records from collection '{collection_name}'.")

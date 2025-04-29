@@ -16,7 +16,7 @@ Search benchmarking
 search_params = {
     "anns_field": "embedding",
     "metric_type": "COSINE",
-    "index_params": {"ef": 20000},
+    "index_params": {"ef": 10000},
     "limit": None,
     "threshold": 0.6,
     "output_fields": ["id", "image_path"],

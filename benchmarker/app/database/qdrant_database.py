@@ -51,8 +51,8 @@ class QdrantDatabase(VectorDatabase):
                 },
                 hnsw_config={
                     "m": 16,
-                    "ef_construct": 20000,
-                },  # Trebalo bi razmisliti i o ostalim potencijalnim konfiguracijama
+                    "ef_construct": 10000,
+                },
             )
 
         except Exception as e:
