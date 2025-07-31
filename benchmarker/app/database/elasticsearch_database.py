@@ -2,6 +2,8 @@ from app.database.vector_database import VectorDatabase
 from elasticsearch import Elasticsearch, helpers
 from app.logger import get_logger
 import time
+import csv
+import os
 
 logger = get_logger()
 
@@ -100,7 +102,13 @@ class ElasticsearchDatabase(VectorDatabase):
                 },
             }
 
-    def insert(self, collection_name: str, data, batch_size: int = 500):
+    def insert(
+        self,
+        collection_name: str,
+        data,
+        batch_size: int = 500,
+        timing_csv_path: str = "results/batch_times_es.csv",
+    ):
         if self.client is None:
             logger.error("Elasticsearch client is not connected.")
             return
@@ -116,12 +124,13 @@ class ElasticsearchDatabase(VectorDatabase):
             f"Inserting {total} documents into '{collection_name}' in batches of {batch_size}."
         )
 
+        batch_times = []
+
         try:
             for start in range(0, total, batch_size):
                 end = min(start + batch_size, total)
                 batch = data.iloc[start:end]
 
-                # Convert batch to actions without loading everything into memory
                 actions = (
                     {
                         "_index": index_name,
@@ -134,10 +143,29 @@ class ElasticsearchDatabase(VectorDatabase):
                     for idx, row in batch.iterrows()
                 )
 
+                batch_num = start // batch_size + 1
+                batch_start_time = time.time()
+
                 helpers.bulk(self.client, actions)
+
+                batch_end_time = time.time()
+                elapsed = batch_end_time - batch_start_time
+
                 logger.info(
-                    f"Inserted batch {start // batch_size + 1} ({len(batch)} documents) into '{collection_name}'."
+                    f"Inserted batch {batch_num} ({len(batch)} documents) into '{collection_name}' in {elapsed:.2f} seconds."
                 )
+
+                batch_times.append({"batch": batch_num, "time_sec": elapsed})
+
+            # Write batch timing info to CSV (append mode)
+            write_header = not os.path.exists(timing_csv_path)
+            with open(timing_csv_path, mode="a", newline="") as csvfile:
+                fieldnames = ["batch", "time_sec"]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                if write_header:
+                    writer.writeheader()
+                for entry in batch_times:
+                    writer.writerow(entry)
 
         except Exception as e:
             logger.error(f"Error inserting data into Elasticsearch: {e}")

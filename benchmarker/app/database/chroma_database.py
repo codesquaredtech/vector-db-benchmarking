@@ -1,5 +1,7 @@
 import math
 import time
+import os
+import csv
 
 import chromadb
 from chromadb.config import Settings
@@ -60,6 +62,7 @@ class ChromaDatabase(VectorDatabase):
         batch_size: int = 500,
         retries: int = 5,
         delay: float = 10,
+        timing_csv_path: str = "results/batch_times_chroma.csv",
     ):
         if self.client is None:
             raise ConnectionError("Chroma client is not connected.")
@@ -74,6 +77,8 @@ class ChromaDatabase(VectorDatabase):
             time.sleep(5)
             self.connect()
 
+        batch_times = []
+
         try:
             try:
                 collection = self.client.get_or_create_collection(name=collection_name)
@@ -86,12 +91,12 @@ class ChromaDatabase(VectorDatabase):
             num_batches = math.ceil(total_rows / batch_size)
 
             for i in range(num_batches):
-                start = i * batch_size
-                end = min((i + 1) * batch_size, total_rows)
-                batch = data.iloc[start:end]
+                start_idx = i * batch_size
+                end_idx = min((i + 1) * batch_size, total_rows)
+                batch = data.iloc[start_idx:end_idx]
 
                 ids = batch.index.tolist()
-                str_ids = [str(i) for i in ids]
+                str_ids = [str(x) for x in ids]
                 embeddings = batch["embedding"].tolist()
                 image_paths = [{"image_path": path} for path in batch["image_path"]]
 
@@ -100,6 +105,8 @@ class ChromaDatabase(VectorDatabase):
                 )
 
                 attempt = 0
+                batch_start_time = time.time()  # start timer
+
                 while attempt <= retries:
                     try:
                         collection.add(
@@ -128,6 +135,21 @@ class ChromaDatabase(VectorDatabase):
                             logger.error(f"Final attempt failed for batch {i + 1}: {e}")
                             raise e
                         time.sleep(delay)
+
+                batch_end_time = time.time()
+                elapsed = batch_end_time - batch_start_time
+
+                batch_times.append({"batch": i + 1, "time_sec": elapsed})
+
+            write_header = not os.path.exists(timing_csv_path)
+            with open(timing_csv_path, mode="a", newline="") as csvfile:
+                fieldnames = ["batch", "time_sec"]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+                if write_header:
+                    writer.writeheader()
+                for entry in batch_times:
+                    writer.writerow(entry)
 
         except Exception as e:
             logger.error(f"Failed to insert data into '{collection_name}': {e}")

@@ -1,4 +1,7 @@
 import math
+import os
+import csv
+import time
 from app.database.vector_database import VectorDatabase
 from app.logger import get_logger
 
@@ -59,9 +62,17 @@ class QdrantDatabase(VectorDatabase):
             logger.error(f"An error occurred: {e}")
             raise e
 
-    def insert(self, collection_name: str, data, batch_size: int = 500):
+    def insert(
+        self,
+        collection_name: str,
+        data,
+        batch_size: int = 500,
+        timing_csv_path: str = "results/batch_times_qdrant.csv",
+    ):
         total_rows = len(data)
         num_batches = math.ceil(total_rows / batch_size)
+
+        batch_times = []
 
         for i in range(num_batches):
             start = i * batch_size
@@ -77,6 +88,9 @@ class QdrantDatabase(VectorDatabase):
                 f"Inserting batch {i + 1}/{num_batches} with {len(ids)} points into {collection_name}"
             )
 
+            batch_num = i + 1
+            batch_start_time = time.time()
+
             try:
                 self.client.upsert(
                     collection_name=collection_name,
@@ -87,8 +101,23 @@ class QdrantDatabase(VectorDatabase):
                     ),
                 )
             except Exception as e:
-                logger.error(f"Error inserting batch {i + 1}: {e}")
+                logger.error(f"Error inserting batch {batch_num}: {e}")
                 raise e
+
+            batch_end_time = time.time()
+            elapsed = batch_end_time - batch_start_time
+            logger.info(f"Batch {batch_num} inserted in {elapsed:.2f} seconds.")
+            batch_times.append({"batch": batch_num, "time_sec": elapsed})
+
+        # Append batch times to CSV file
+        write_header = not os.path.exists(timing_csv_path)
+        with open(timing_csv_path, mode="a", newline="") as csvfile:
+            fieldnames = ["batch", "time_sec"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+            for entry in batch_times:
+                writer.writerow(entry)
 
     def delete(self, collection_name: str):
         logger.info(f"Deleting everything from {collection_name}")

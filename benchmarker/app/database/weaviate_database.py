@@ -3,6 +3,9 @@ import weaviate
 from weaviate.classes.data import DataObject
 import uuid
 import math
+import os
+import csv
+import time
 from weaviate.classes.query import MetadataQuery
 import numpy as np
 
@@ -60,7 +63,13 @@ class WeaviateDatabase(VectorDatabase):
         # response = global_client.collections.list_all(simple=False)
         # logger.info(f"Weaviate specification: {response}")
 
-    def insert(self, collection_name: str, data, batch_size: int = 500):
+    def insert(
+        self,
+        collection_name: str,
+        data,
+        batch_size: int = 500,
+        timing_csv_path: str = "results/batch_times_weaviate.csv",
+    ):
         global global_client
         collection = global_client.collections.get(collection_name)
 
@@ -70,6 +79,8 @@ class WeaviateDatabase(VectorDatabase):
 
         total_rows = len(data)
         num_batches = math.ceil(total_rows / batch_size)
+
+        batch_times = []
 
         for i in range(num_batches):
             start = i * batch_size
@@ -91,12 +102,30 @@ class WeaviateDatabase(VectorDatabase):
                     )
                 )
 
+            batch_num = i + 1
+            batch_start_time = time.time()
+
             try:
                 result = collection.data.insert_many(objects)
-                logger.debug(f"Insert result: {result}")
+                logger.debug(f"Insert result for batch {batch_num}: {result}")
             except Exception as e:
-                logger.error(f"Failed to insert batch {i}: {e}")
+                logger.error(f"Failed to insert batch {batch_num}: {e}")
                 raise
+
+            batch_end_time = time.time()
+            elapsed = batch_end_time - batch_start_time
+            logger.info(f"Batch {batch_num} inserted in {elapsed:.2f} seconds.")
+            batch_times.append({"batch": batch_num, "time_sec": elapsed})
+
+        # Append batch times to CSV file
+        write_header = not os.path.exists(timing_csv_path)
+        with open(timing_csv_path, mode="a", newline="") as csvfile:
+            fieldnames = ["batch", "time_sec"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+            for entry in batch_times:
+                writer.writerow(entry)
 
     def delete(self, collection_name: str):
         # If we don't want to drop the collection, we can do it this way.
