@@ -1,4 +1,8 @@
 import psycopg2
+import os
+import time
+import csv
+import math
 from app.database.vector_database import VectorDatabase
 from app.logger import get_logger
 from pgvector.psycopg2 import register_vector
@@ -70,24 +74,60 @@ class PGVectorDatabase(VectorDatabase):
                 logger.error(f"Error creating table: {e}")
                 self.connection.rollback()
 
-    def insert(self, collection_name: str, data):
+    def insert(
+        self,
+        collection_name: str,
+        data,
+        batch_size: int = 500,
+        timing_csv_path: str = "results/batch_times_pgvector.csv",
+    ):
         self.sqlalchemy_engine = create_engine(
             "postgresql+psycopg2://", creator=lambda: self.connection
         )
-        try:
-            data.to_sql(
-                collection_name,
-                con=self.sqlalchemy_engine,
-                if_exists="append",
-                index=False,
-                method="multi",  # groups multiple INSERTs into one query
-                chunksize=500,  # splits data into batches of 500 rows
-            )
-            logger.info(
-                f"Data from DataFrame inserted into '{collection_name}' successfully."
-            )
-        except Exception as e:
-            logger.error(f"Error inserting DataFrame: {e}")
+
+        total_rows = len(data)
+        num_batches = math.ceil(total_rows / batch_size)
+        batch_times = []
+
+        for i in range(num_batches):
+            start = i * batch_size
+            end = min((i + 1) * batch_size, total_rows)
+            batch = data.iloc[start:end]
+
+            batch_num = i + 1
+            batch_start_time = time.time()
+
+            try:
+                batch.to_sql(
+                    collection_name,
+                    con=self.sqlalchemy_engine,
+                    if_exists="append",
+                    index=False,
+                    method="multi",
+                    chunksize=batch_size,  # optional here because batch is already chunked
+                )
+                batch_end_time = time.time()
+                elapsed = batch_end_time - batch_start_time
+
+                logger.info(
+                    f"Inserted batch {batch_num}/{num_batches} ({len(batch)} rows) into '{collection_name}' in {elapsed:.2f} seconds."
+                )
+                batch_times.append({"batch": batch_num, "time_sec": elapsed})
+
+            except Exception as e:
+                logger.error(f"Error inserting batch {batch_num}: {e}")
+                # Optional: decide whether to stop or continue on error
+                raise e
+
+        # Append batch times to CSV file
+        write_header = not os.path.exists(timing_csv_path)
+        with open(timing_csv_path, mode="a", newline="") as csvfile:
+            fieldnames = ["batch", "time_sec"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+            for entry in batch_times:
+                writer.writerow(entry)
 
     def delete(self, collection_name: str):
         with self.connection.cursor() as cur:

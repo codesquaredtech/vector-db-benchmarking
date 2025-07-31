@@ -1,4 +1,7 @@
 import math
+import time
+import os
+import csv
 
 from app.database.vector_database import VectorDatabase
 from pymilvus import (
@@ -48,11 +51,19 @@ class MilvusDatabase(VectorDatabase):
         }
         collection.create_index(field_name="embedding", index_params=index_params)
 
-    def insert(self, collection_name: str, data, batch_size: int = 500):
+    def insert(
+        self,
+        collection_name: str,
+        data,
+        batch_size: int = 500,
+        timing_csv_path: str = "results/batch_times_milvus.csv",
+    ):
         collection = Collection(name=collection_name)
 
         total_rows = len(data)
         num_batches = math.ceil(total_rows / batch_size)
+
+        batch_times = []
 
         for i in range(num_batches):
             start = i * batch_size
@@ -64,7 +75,27 @@ class MilvusDatabase(VectorDatabase):
             embeddings = batch["embedding"].tolist()
             image_paths = batch["image_path"].tolist()
 
+            batch_num = i + 1
+            batch_start_time = time.time()
+
             collection.insert([ids, embeddings, image_paths])
+
+            batch_end_time = time.time()
+            elapsed = batch_end_time - batch_start_time
+
+            logger.info(
+                f"Inserted batch {batch_num}/{num_batches} in {elapsed:.2f} seconds"
+            )
+            batch_times.append({"batch": batch_num, "time_sec": elapsed})
+
+        write_header = not os.path.exists(timing_csv_path)
+        with open(timing_csv_path, mode="a", newline="") as csvfile:
+            fieldnames = ["batch", "time_sec"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            if write_header:
+                writer.writeheader()
+            for entry in batch_times:
+                writer.writerow(entry)
 
     def delete(self, collection_name: str):
         if utility.has_collection(collection_name):
