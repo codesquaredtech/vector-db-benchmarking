@@ -1,7 +1,7 @@
 networks:
   vector_db_testing:
     name: vector_db_testing
-#    external: true
+    external: true
 
 services:
   vectorizer:
@@ -13,7 +13,16 @@ services:
       - ./logs:/vectorizer/logs
       - ./output:/vectorizer/output
       - ./app:/vectorizer/app
-      # TODO: Add mapping for the image folder (if external, e.g., HDD)
+      # Add mapping for the image folder (if external, e.g., HDD)
     networks:
       - vector_db_testing
-    command: ["python3", "main.py"]
+    environment:
+      MODEL: "${MODEL:-dino}"
+      DIRS: "${DIRS:-./images/NORTHSTORM/2024}"
+    command:
+      - python3
+      - main.py
+      - --model
+      - "${MODEL}"
+      - --dirs
+      - "${DIRS}"
