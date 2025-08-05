@@ -2,6 +2,7 @@ import datetime
 import json
 import time
 import os
+import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
@@ -31,14 +32,7 @@ from app.database.elasticsearch_database import ElasticsearchDatabase
 """
 Modify global variables if needed.
 """
-
-INPUT_FILE_PATHS = [
-    "./relative/path/to/embeddimgs_1.parquet",
-    "./relative/path/to/embeddimgs_2.parquet",
-    "./relative/path/to/embeddimgs_3.parquet",
-]
-
-
+INPUT_FOLDER_PATH = "./input/insightface"
 VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH = (
     "./results/vector_storing_and_deletion_results_"
 )
@@ -52,39 +46,20 @@ LABELED_DATASET_PATHS = {
     "woman.JPG": "./app/search_data/small_woman_updated.csv",
 }
 
-COLLECTION_NAME = "Faces"
-NUM_ITERATIONS = 3
-DATABASE_FOR_BENCHMARKING = "ELASTICSEARCH"
-VECTOR_SIZE = 512  # 1280 for mediapipe, 512 for insightface, 768 for dino
 
-
-def get_vector_database(db_type: str):
-    if db_type == "MILVUS":
-        return MilvusDatabase()
-    elif db_type == "WEAVIATE":
-        return WeaviateDatabase()
-    elif db_type == "PGVECTOR":
-        return PGVectorDatabase()
-    elif db_type == "QDRANT":
-        return QdrantDatabase()
-    elif db_type == "ELASTICSEARCH":
-        return ElasticsearchDatabase()
-    elif db_type == "CHROMA":
-        return ChromaDatabase()
-    else:
-        raise ValueError(f"Unsupported vector database: {db_type}")
-
-
-def retrieve_embeddings_from_parquet_files(file_paths):
+def retrieve_embeddings_from_parquet_folder(folder_path):
     embeddings_list = []
-    for file_path in file_paths:
-        try:
-            embeddings = pd.read_parquet(file_path, engine="pyarrow")
-            embeddings_list.append(embeddings)
-        except Exception as e:
-            logger.error(
-                f"An error occurred while retrieving embeddings from {file_path}: {e}"
-            )
+    for file_name in os.listdir(folder_path):
+        if file_name.endswith(".parquet"):
+            file_path = os.path.join(folder_path, file_name)
+            try:
+                embeddings = pd.read_parquet(file_path, engine="pyarrow")
+                embeddings_list.append(embeddings)
+            except Exception as e:
+                logger.error(f"Error reading {file_path}: {e}")
+
+    if not embeddings_list:
+        raise ValueError(f"No valid parquet embeddings found in folder: {folder_path}")
 
     all_embeddings = pd.concat(embeddings_list, ignore_index=True)
     return all_embeddings
@@ -102,108 +77,84 @@ def retrieve_embedding_from_csv_file(embedding_path: str):
     return embedding_array, image_path
 
 
-def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
-    logger.info("Retrieving extracted embeddings")
-    embeddings = retrieve_embeddings_from_parquet_files(INPUT_FILE_PATHS)
-    logger.info(f"Embeddings retrieved successfully, total rows: {len(embeddings)}")
+# TODO: This isn't correct; Should be modified to follow docker's memory.
+def measure_memory(process):
+    """Returns memory usage in MB."""
+    return process.memory_info().rss / (1024**2)
 
-    benchmark_data = []
 
-    for i in range(num_iterations):
-        logger.info(f"Starting benchmark iteration {i + 1}/{num_iterations}")
+def prepare_database(db, collection_name, vector_size):
+    """Connects and prepares the collection."""
+    db.connect()
+    db.drop_collection(collection_name)
+    db.create_collection(collection_name, vector_size)
 
-        process = psutil.Process()
 
-        logger.info("Connecting to the vector database")
-        db.connect()
-        db.drop_collection(COLLECTION_NAME)
-        logger.info("Successfully connected to the vector database")
+def run_single_iteration(
+    db, collection_name, vector_size, embeddings, process, iteration_num
+):
+    """Runs one benchmark iteration (init, insert, delete)."""
+    logger.info(f"Starting benchmark iteration {iteration_num}")
 
-        # Measure memory in MB
-        memory_before_init = process.memory_info().rss / (1024**2)
-        vector_db_initialisation_start = datetime.datetime.now()
-        db.create_collection(COLLECTION_NAME, VECTOR_SIZE)
-        vector_db_initialisation_end = datetime.datetime.now()
-        memory_after_init = process.memory_info().rss / (1024**2)
+    prepare_database(db, collection_name, vector_size)
 
-        initialisation_time = (
-            vector_db_initialisation_end - vector_db_initialisation_start
-        ).total_seconds()
+    memory_before_init = measure_memory(process)
+    init_start = datetime.datetime.now()
+    db.create_collection(collection_name, vector_size)
+    init_end = datetime.datetime.now()
+    memory_after_init = measure_memory(process)
 
-        memory_before_insert = process.memory_info().rss / (1024**2)
-        vector_db_insertion_start = datetime.datetime.now()
-        db.insert(COLLECTION_NAME, embeddings)
-        vector_db_insertion_end = datetime.datetime.now()
-        memory_after_insert = process.memory_info().rss / (1024**2)
+    memory_before_insert = measure_memory(process)
+    insert_start = datetime.datetime.now()
+    db.insert(collection_name, embeddings)
+    insert_end = datetime.datetime.now()
+    memory_after_insert = measure_memory(process)
 
-        insertion_time = (
-            vector_db_insertion_end - vector_db_insertion_start
-        ).total_seconds()
+    delete_start = datetime.datetime.now()
+    db.delete(collection_name)
+    delete_end = datetime.datetime.now()
 
-        memory_usage_initialisation = memory_after_init - memory_before_init
-        memory_usage_insertion = memory_after_insert - memory_before_insert
+    return {
+        "iteration": iteration_num,
+        "initialisation_time": (init_end - init_start).total_seconds(),
+        "insertion_time": (insert_end - insert_start).total_seconds(),
+        "deletion_time": (delete_end - delete_start).total_seconds(),
+        "memory_usage_initialisation": memory_after_init - memory_before_init,
+        "memory_usage_insertion": memory_after_insert - memory_before_insert,
+    }
 
-        logger.info(
-            f"Iteration {i + 1} - Initialisation Time: {initialisation_time}s, Insertion Time: {insertion_time}s, "
-            f"Memory Usage (Init): {memory_usage_initialisation} MB, Memory Usage (Insert): {memory_usage_insertion} MB"
-        )
 
-        vector_db_deletion_start = datetime.datetime.now()
-        db.delete(COLLECTION_NAME)
-        vector_db_deletion_end = datetime.datetime.now()
-
-        deletion_time = (
-            vector_db_deletion_end - vector_db_deletion_start
-        ).total_seconds()
-
-        logger.info(f"Iteration {i + 1} - Deletion Time: {deletion_time}s")
-
-        benchmark_data.append(
-            {
-                "iteration": i + 1,
-                "initialisation_time": initialisation_time,
-                "insertion_time": insertion_time,
-                "deletion_time": deletion_time,
-                "memory_usage_initialisation": memory_usage_initialisation,
-                "memory_usage_insertion": memory_usage_insertion,
-            }
-        )
-
+def summarize_benchmark_results(
+    benchmark_data, output_prefix, database_name, embedding_count
+):
+    """Saves raw and statistical benchmark results to CSV."""
     benchmark_df = pd.DataFrame(benchmark_data)
-    complete_file_path = (
-        VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH
-        + f"_size_{len(embeddings)}__database_{DATABASE_FOR_BENCHMARKING}_"
-        + str(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
-        + ".csv"
-    )
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    complete_file_path = f"{output_prefix}_size_{embedding_count}__database_{database_name}_{timestamp}.csv"
+
     benchmark_df.to_csv(complete_file_path, index=False)
 
-    initialisation_times = benchmark_df["initialisation_time"]
-    insertion_times = benchmark_df["insertion_time"]
-    memory_usage_initialisation = benchmark_df["memory_usage_initialisation"]
-    memory_usage_insertion = benchmark_df["memory_usage_insertion"]
-    deletion_times = benchmark_df["deletion_time"]
-
     stats = {
-        "initialisation_mean": np.mean(initialisation_times),
-        "initialisation_std": np.std(initialisation_times),
-        "insertion_mean": np.mean(insertion_times),
-        "insertion_std": np.std(insertion_times),
-        "deletion_mean": np.mean(deletion_times),
-        "deletion_std": np.std(deletion_times),
-        "initialisation_p90": np.percentile(initialisation_times, 90),
-        "insertion_p90": np.percentile(insertion_times, 90),
-        "deletion_p90": np.percentile(deletion_times, 90),
-        "initialisation_p95": np.percentile(initialisation_times, 95),
-        "insertion_p95": np.percentile(insertion_times, 95),
-        "deletion_p95": np.percentile(deletion_times, 95),
-        "initialisation_p99": np.percentile(initialisation_times, 99),
-        "insertion_p99": np.percentile(insertion_times, 99),
-        "deletion_p99": np.percentile(deletion_times, 99),
-        "memory_usage_init_mean": np.mean(memory_usage_initialisation),
-        "memory_usage_init_std": np.std(memory_usage_initialisation),
-        "memory_usage_insert_mean": np.mean(memory_usage_insertion),
-        "memory_usage_insert_std": np.std(memory_usage_insertion),
+        "initialisation_mean": np.mean(benchmark_df["initialisation_time"]),
+        "initialisation_std": np.std(benchmark_df["initialisation_time"]),
+        "insertion_mean": np.mean(benchmark_df["insertion_time"]),
+        "insertion_std": np.std(benchmark_df["insertion_time"]),
+        "deletion_mean": np.mean(benchmark_df["deletion_time"]),
+        "deletion_std": np.std(benchmark_df["deletion_time"]),
+        "initialisation_p90": np.percentile(benchmark_df["initialisation_time"], 90),
+        "insertion_p90": np.percentile(benchmark_df["insertion_time"], 90),
+        "deletion_p90": np.percentile(benchmark_df["deletion_time"], 90),
+        "initialisation_p95": np.percentile(benchmark_df["initialisation_time"], 95),
+        "insertion_p95": np.percentile(benchmark_df["insertion_time"], 95),
+        "deletion_p95": np.percentile(benchmark_df["deletion_time"], 95),
+        "initialisation_p99": np.percentile(benchmark_df["initialisation_time"], 99),
+        "insertion_p99": np.percentile(benchmark_df["insertion_time"], 99),
+        "deletion_p99": np.percentile(benchmark_df["deletion_time"], 99),
+        "memory_usage_init_mean": np.mean(benchmark_df["memory_usage_initialisation"]),
+        "memory_usage_init_std": np.std(benchmark_df["memory_usage_initialisation"]),
+        "memory_usage_insert_mean": np.mean(benchmark_df["memory_usage_insertion"]),
+        "memory_usage_insert_std": np.std(benchmark_df["memory_usage_insertion"]),
     }
 
     stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
@@ -212,9 +163,38 @@ def insert_embeddings(db, num_iterations=NUM_ITERATIONS):
     logger.info(f"Benchmark results saved to {complete_file_path}")
 
 
-def search_embedding(db, embedding, search_params, image_path):
+def insert_embeddings(db, num_iterations, collection_name, vector_size, database_name):
+    """Top-level orchestration of the embedding insertion benchmark."""
+
+    logger.info("Retrieving extracted embeddings")
+    embeddings = retrieve_embeddings_from_parquet_folder(INPUT_FOLDER_PATH)
+    logger.info(f"Embeddings retrieved successfully, total rows: {len(embeddings)}")
+
+    benchmark_data = []
+    process = psutil.Process()
+
+    for i in range(num_iterations):
+        result = run_single_iteration(
+            db, collection_name, vector_size, embeddings, process, i + 1
+        )
+        logger.info(
+            f"Iteration {i + 1} - Init: {result['initialisation_time']}s, "
+            f"Insert: {result['insertion_time']}s, Delete: {result['deletion_time']}s, "
+            f"Mem Init: {result['memory_usage_initialisation']} MB, Mem Insert: {result['memory_usage_insertion']} MB"
+        )
+        benchmark_data.append(result)
+
+    summarize_benchmark_results(
+        benchmark_data,
+        output_prefix=VECTOR_STORING_AND_DELETION_BENCHMARKING_RESULTS_BASE_FILE_PATH,
+        database_name=database_name,
+        embedding_count=len(embeddings),
+    )
+
+
+def search_embedding(db, collection_name, embedding, search_params, image_path):
     start_time = time.perf_counter()
-    raw_predicted_results = db.search(COLLECTION_NAME, embedding, search_params)
+    raw_predicted_results = db.search(collection_name, embedding, search_params)
     end_time = time.perf_counter()
 
     # parsed_predicted_results - list of unique image names where the faces have been found
@@ -248,91 +228,198 @@ def search_embedding(db, embedding, search_params, image_path):
     return end_time - start_time, precision, recall, f1, specificity, far, frr
 
 
+def prepare_database_with_embeddings(db, collection_name, vector_size):
+    embeddings = retrieve_embeddings_from_parquet_folder(INPUT_FOLDER_PATH)
+    db.connect()
+    db.create_collection(collection_name, vector_size)
+    db.insert(collection_name, embeddings)
+
+
+def run_search_iteration(
+    db, collection_name, image_embedding, search_params, image_path, iteration
+):
+    try:
+        search_time, precision, recall, f1, specificity, far, frr = search_embedding(
+            db, collection_name, image_embedding, search_params, image_path
+        )
+        return {
+            "iteration": iteration,
+            "search_time": search_time,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1,
+            "specificity": specificity,
+            "far": far,
+            "frr": frr,
+        }
+    except Exception as e:
+        logger.error(f"Error during search on iteration {iteration}: {e}")
+        return None
+
+
+def benchmark_search_for_embedding(
+    db,
+    collection_name,
+    image_embedding,
+    image_path,
+    search_params,
+    num_threads,
+    num_iterations,
+):
+    logger.info(f"Running benchmark for image: {image_path}")
+    benchmark_data = []
+
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [
+            executor.submit(
+                run_search_iteration,
+                db,
+                collection_name,
+                image_embedding,
+                search_params,
+                image_path,
+                i + 1,
+            )
+            for i in range(num_iterations)
+        ]
+
+        start_time = time.perf_counter()
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                benchmark_data.append(result)
+        end_time = time.perf_counter()
+
+    elapsed_time = end_time - start_time
+    rps = len(benchmark_data) / elapsed_time if elapsed_time > 0 else 0
+
+    return benchmark_data, elapsed_time, rps
+
+
+def summarize_search_results(
+    benchmark_data, database_name, num_threads, num_iterations
+):
+    benchmark_df = pd.DataFrame(benchmark_data)
+    search_times = benchmark_df["search_time"]
+
+    stats = {
+        "search_time_mean": np.mean(search_times),
+        "search_time_std": np.std(search_times),
+        "search_time_p90": np.percentile(search_times, 90),
+        "search_time_p95": np.percentile(search_times, 95),
+        "search_time_p99": np.percentile(search_times, 99),
+        "rps": len(benchmark_data) / search_times.sum()
+        if search_times.sum() > 0
+        else 0,
+        "total_time": search_times.sum(),
+        "successful_requests": len(benchmark_data),
+    }
+
+    stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
+
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    complete_file_path = (
+        f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_database_{database_name}_"
+        f"{timestamp}.csv"
+    )
+
+    benchmark_df.to_csv(complete_file_path, index=False)
+    stats_df.to_csv(complete_file_path, mode="a", header=False, index=False)
+
+    logger.info(f"Search benchmark results and stats saved to {complete_file_path}")
+    logger.info(
+        f"RPS: {stats['rps']}, Total Time: {stats['total_time']}s, Successful Requests: {stats['successful_requests']}"
+    )
+
+
 def search_similar_embeddings(
     db,
+    collection_name,
+    vector_size,
     search_params,
+    database_name,
     num_threads=10,
     num_iterations=100,
 ):
-    embeddings = retrieve_embeddings_from_parquet_files(INPUT_FILE_PATHS)
-    db.connect()
-    db.create_collection(COLLECTION_NAME, VECTOR_SIZE)
-    db.insert(COLLECTION_NAME, embeddings)
+    prepare_database_with_embeddings(db, collection_name, vector_size)
+
     for embedding_path in EMBEDDINGS_TO_COMPARE_WITH_PATH:
-        logger.info(f"Processing {embedding_path} path...")
+        logger.info(f"Processing query embedding: {embedding_path}")
         image_embedding, image_path = retrieve_embedding_from_csv_file(embedding_path)
-        benchmark_data = []
 
-        with ThreadPoolExecutor(max_workers=num_threads) as executor:
-            futures = [
-                executor.submit(
-                    search_embedding, db, image_embedding, search_params, image_path
-                )
-                for _ in range(num_iterations)
-            ]
+        benchmark_data, _, _ = benchmark_search_for_embedding(
+            db,
+            collection_name,
+            image_embedding,
+            image_path,
+            search_params,
+            num_threads,
+            num_iterations,
+        )
 
-            start_time = time.perf_counter()
-            successful_requests = 0
+        summarize_search_results(
+            benchmark_data,
+            database_name=database_name,
+            num_threads=num_threads,
+            num_iterations=num_iterations,
+        )
 
-            for i, future in enumerate(as_completed(futures)):
-                try:
-                    search_time, precision, recall, f1, specificity, far, frr = (
-                        future.result()
-                    )
-                    successful_requests += 1
 
-                    benchmark_data.append(
-                        {
-                            "iteration": i + 1,
-                            "search_time": search_time,
-                            "precision": precision,
-                            "recall": recall,
-                            "f1_score": f1,
-                            "specificity": specificity,
-                            "far": far,
-                            "frr": frr,
-                        }
-                    )
-                    logger.info(
-                        f"Iteration {i + 1} - Search Time: {search_time}s, Precision: {precision}, Recall: {recall}, F1: {f1}, Specificity: {specificity}, FAR: {far}, FRR: {frr}"
-                    )
-                except Exception as e:
-                    logger.error(f"Error during search on iteration {i + 1}: {e}")
+def parse_args():
+    parser = argparse.ArgumentParser(description="Vector DB Benchmarking Script")
 
-            end_time = time.perf_counter()
+    parser.add_argument(
+        "--collection-name", type=str, default=os.getenv("COLLECTION_NAME", "Faces")
+    )
+    parser.add_argument(
+        "--num-iterations", type=int, default=int(os.getenv("NUM_ITERATIONS", 3))
+    )
+    parser.add_argument(
+        "--database", type=str, default=os.getenv("DATABASE", "ELASTICSEARCH")
+    )
+    parser.add_argument(
+        "--vector-size", type=int, default=int(os.getenv("VECTOR_SIZE", 512))
+    )
 
-        elapsed_time = end_time - start_time
-        rps = successful_requests / elapsed_time if elapsed_time > 0 else 0
+    return parser.parse_args()
 
-        search_times = [data["search_time"] for data in benchmark_data]
 
-        stats = {
-            "search_time_mean": np.mean(search_times),
-            "search_time_std": np.std(search_times),
-            "search_time_p90": np.percentile(search_times, 90),
-            "search_time_p95": np.percentile(search_times, 95),
-            "search_time_p99": np.percentile(search_times, 99),
-            "rps": rps,
-            "total_time": elapsed_time,
-            "successful_requests": successful_requests,
+def get_default_search_params(database_name):
+    db = database_name.upper()
+    if db == "WEAVIATE" or db == "QDRANT" or db == "PGVECTOR":
+        return {"certainty": 0.6, "limit": 10000}
+    elif db == "MILVUS":
+        return {
+            "anns_field": "embedding",
+            "metric_type": "COSINE",
+            "index_params": {"ef": 10000},
+            "limit": None,
+            "threshold": 0.6,
+            "output_fields": ["id", "image_path"],
         }
+    elif db == "CHROMA":
+        return {"threshold": 0.6, "limit": 10000}
+    elif db == "ELASTICSEARCH":
+        return {"certainty": 0.6, "limit": 10000, "num_candidates": 10000}
+    else:
+        raise ValueError(f"No default search parameters defined for {db}")
 
-        benchmark_df = pd.DataFrame(benchmark_data)
-        stats_df = pd.DataFrame(list(stats.items()), columns=["Metric", "Value"])
 
-        complete_file_path = (
-            f"{VECTOR_SEARCH_BENCHMARKING_RESULTS_BASE_FILE_PATH}threads_{num_threads}_iterations_{num_iterations}_database_{DATABASE_FOR_BENCHMARKING}_"
-            + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            + ".csv"
-        )
-
-        benchmark_df.to_csv(complete_file_path, index=False)
-        stats_df.to_csv(complete_file_path, mode="a", header=False, index=False)
-
-        logger.info(f"Search benchmark results and stats saved to {complete_file_path}")
-        logger.info(
-            f"RPS: {rps}, Total Time: {elapsed_time}s, Successful Requests: {successful_requests}"
-        )
+def get_vector_database(db_type: str):
+    if db_type == "MILVUS":
+        return MilvusDatabase()
+    elif db_type == "WEAVIATE":
+        return WeaviateDatabase()
+    elif db_type == "PGVECTOR":
+        return PGVectorDatabase()
+    elif db_type == "QDRANT":
+        return QdrantDatabase()
+    elif db_type == "ELASTICSEARCH":
+        return ElasticsearchDatabase()
+    elif db_type == "CHROMA":
+        return ChromaDatabase()
+    else:
+        raise ValueError(f"Unsupported vector database: {db_type}")
 
 
 """
@@ -340,13 +427,20 @@ Modify code below for the purposes of other vector database benchmarking.
 """
 
 if __name__ == "__main__":
+    args = parse_args()
     logger = get_logger()
-    db = get_vector_database(DATABASE_FOR_BENCHMARKING)
-    search_params = {"certainty": 0.6, "limit": 10000, "num_candidates": 10000}
 
-    search_similar_embeddings(
-        db,
-        search_params,
-        num_threads=10,
-        num_iterations=100,
+    COLLECTION_NAME = args.collection_name
+    NUM_ITERATIONS = args.num_iterations
+    DATABASE_FOR_BENCHMARKING = args.database.upper()
+    VECTOR_SIZE = args.vector_size
+
+    logger.info(
+        f"Running benchmark with config: DATABASE={DATABASE_FOR_BENCHMARKING}, COLLECTION={COLLECTION_NAME}, ITERATIONS={NUM_ITERATIONS}, VECTOR_SIZE={VECTOR_SIZE}"
+    )
+
+    db = get_vector_database(DATABASE_FOR_BENCHMARKING)
+
+    insert_embeddings(
+        db, NUM_ITERATIONS, COLLECTION_NAME, VECTOR_SIZE, DATABASE_FOR_BENCHMARKING
     )

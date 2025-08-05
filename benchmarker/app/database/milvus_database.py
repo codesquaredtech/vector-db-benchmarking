@@ -77,7 +77,7 @@ class MilvusDatabase(VectorDatabase):
 
             batch_num = i + 1
             batch_start_time = time.time()
-
+            assert len(ids) == len(embeddings) == len(image_paths)
             collection.insert([ids, embeddings, image_paths])
 
             batch_end_time = time.time()

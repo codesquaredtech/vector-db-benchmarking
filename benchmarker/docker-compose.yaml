@@ -1,9 +1,7 @@
-
 networks:
   vector_db_testing:
     name: vector_db_testing
     external: true
-
 
 services:
   benchmarker:
@@ -15,6 +13,21 @@ services:
       - ./input:/benchmarker/input
       - ./results:/benchmarker/results
       - ./util_scripts.py:/benchmarker/util_scripts.py
+    environment:
+      DATABASE: "${DATABASE:-ELASTICSEARCH}"
+      COLLECTION_NAME: "${COLLECTION_NAME:-Faces}"
+      NUM_ITERATIONS: "${NUM_ITERATIONS:-3}"
+      VECTOR_SIZE: "${VECTOR_SIZE:-512}"
     networks:
       - vector_db_testing
-    command: ["python", "main.py"]
+    command:
+      - python
+      - main.py
+      - --database
+      - "${DATABASE}"
+      - --collection-name
+      - "${COLLECTION_NAME}"
+      - --num-iterations
+      - "${NUM_ITERATIONS}"
+      - --vector-size
+      - "${VECTOR_SIZE}"

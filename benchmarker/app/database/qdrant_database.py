@@ -1,12 +1,3 @@
-import math
-import os
-import csv
-import time
-from app.database.vector_database import VectorDatabase
-from app.logger import get_logger
-
-logger = get_logger()
-
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Batch,
@@ -18,6 +9,16 @@ from qdrant_client.models import (
     SearchParams,
     VectorParams,
 )
+from qdrant_client.http.exceptions import UnexpectedResponse
+
+import math
+import os
+import csv
+import time
+from app.database.vector_database import VectorDatabase
+from app.logger import get_logger
+
+logger = get_logger()
 
 VECTOR_NAME = "image_vector"
 
@@ -43,10 +44,21 @@ class QdrantDatabase(VectorDatabase):
             raise e
 
     def create_collection(self, collection_name: str, vector_size: int):
-        logger.info(f"Creating {collection_name} collection")
+        logger.info(f"Creating fresh '{collection_name}' collection")
+
         try:
+            existing_collections = self.client.get_collections().collections
+            existing_names = [col.name for col in existing_collections]
+
+            if collection_name in existing_names:
+                logger.info(
+                    f"Collection '{collection_name}' already exists. Dropping it."
+                )
+                self.client.delete_collection(collection_name=collection_name)
+
+            # Create a new collection
             self.client.create_collection(
-                collection_name=f"{collection_name}",
+                collection_name=collection_name,
                 vectors_config={
                     VECTOR_NAME: VectorParams(
                         size=vector_size, distance=Distance.COSINE
@@ -58,9 +70,13 @@ class QdrantDatabase(VectorDatabase):
                 },
             )
 
+            logger.info(f"Collection '{collection_name}' created successfully.")
+
         except Exception as e:
-            logger.error(f"An error occurred: {e}")
-            raise e
+            logger.error(
+                f"An error occurred while resetting collection '{collection_name}': {e}"
+            )
+            raise
 
     def insert(
         self,
