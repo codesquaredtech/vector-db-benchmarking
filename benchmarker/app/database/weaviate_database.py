@@ -1,4 +1,5 @@
 from app.database.vector_database import VectorDatabase
+from weaviate.exceptions import UnexpectedStatusCodeError
 import weaviate
 from weaviate.classes.data import DataObject
 import uuid
@@ -39,29 +40,41 @@ class WeaviateDatabase(VectorDatabase):
 
     def create_collection(self, collection_name: str, vector_size: int):
         global global_client
-        properties = [
-            # No need for ID - automatically gets generated as an UUID
-            Property(
-                name="image_path",
-                data_type=DataType.TEXT,
-                description="Path to the image",
-                max_length=255,
-            ),
-        ]
-        # TODO: Compare M with maxConnections: https://milvus.io/docs/v2.0.x/index.md and https://weaviate.io/developers/academy/py/vector_index/hnsw
-        global_client.collections.create(
-            collection_name,
-            properties=properties,
-            vector_index_config=Configure.VectorIndex.hnsw(
-                distance_metric=VectorDistances.COSINE,
-                ef_construction=200,
-                max_connections=16,
-            ),
-        )
 
-        # Info about the specification
-        # response = global_client.collections.list_all(simple=False)
-        # logger.info(f"Weaviate specification: {response}")
+        try:
+            # Check if collection already exists
+            existing_collections = [
+                name.lower() for name in global_client.collections.list_all()
+            ]
+            logger.info(f"Checking if {collection_name} is in {existing_collections}")
+            if collection_name in existing_collections:
+                logger.info(
+                    f"Collection '{collection_name}' already exists. Dropping it."
+                )
+                global_client.collections.delete(collection_name)
+
+            properties = [
+                Property(
+                    name="image_path",
+                    data_type=DataType.TEXT,
+                    description="Path to the image",
+                    max_length=255,
+                ),
+            ]
+
+            global_client.collections.create(
+                collection_name,
+                properties=properties,
+                vector_index_config=Configure.VectorIndex.hnsw(
+                    distance_metric=VectorDistances.COSINE,
+                    ef_construction=200,
+                    max_connections=16,
+                ),
+            )
+            logger.info(f"Collection '{collection_name}' created successfully.")
+
+        except UnexpectedStatusCodeError as e:
+            logger.info(f"Error managing collection '{collection_name}': {e}")
 
     def insert(
         self,

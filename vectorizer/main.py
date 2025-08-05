@@ -99,7 +99,7 @@ def main():
     )
     parser.add_argument(
         "-d",
-        "--dirs",
+        "--dir",
         nargs="+",
         required=True,
         help="One or more image directories to vectorize",
@@ -126,10 +126,12 @@ def main():
     start = datetime.datetime.now()
     logger.info(f"Start vectorizing at: {start}")
 
+    logger.info(f"Vectorising with model {args.model} and directory {args.dir}")
+
     process_images_in_directory(
         model_name=args.model,
         gpu_enabled=gpu,
-        directories=args.dirs,
+        directories=args.dir,
         out_template=args.out_template,
     )
 

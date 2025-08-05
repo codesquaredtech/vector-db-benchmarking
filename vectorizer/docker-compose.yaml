@@ -18,11 +18,11 @@ services:
       - vector_db_testing
     environment:
       MODEL: "${MODEL:-dino}"
-      DIRS: "${DIRS:-./images/NORTHSTORM/2024}"
+      DIR: "${DIR:-./images/NORTHSTORM/2024}"
     command:
       - python3
       - main.py
       - --model
       - "${MODEL}"
-      - --dirs
-      - "${DIRS}"
+      - --dir
+      - "${DIR}"
