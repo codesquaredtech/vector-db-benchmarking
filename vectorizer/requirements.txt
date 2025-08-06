@@ -9,3 +9,4 @@ onnxruntime==1.20.1
 torch==2.6.0
 torchvision==0.21.0
 timm==1.0.15
+deepface==0.0.94

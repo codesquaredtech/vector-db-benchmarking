@@ -12,7 +12,7 @@ DB=$(echo "$DATABASE" | tr '[:upper:]' '[:lower:]')
 # Service startup functions
 start_milvus() {
     echo "Starting Milvus service..."
-    docker compose -f "./milvus/docker-compose.yaml" up -d --build
+    docker compose -f "./milvus/docker-compose.yaml" up -d
 }
 
 start_weaviate() {
