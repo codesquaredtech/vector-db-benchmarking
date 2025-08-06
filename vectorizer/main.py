@@ -8,6 +8,7 @@ from app.embedder.face_embedder import FaceEmbedder
 from app.embedder.insightface_embedder import InsightfaceEmbedder
 from app.embedder.dino_embedder import DINOEmbedder
 from app.embedder.mediapipe_embedder import MediapipeEmbedder
+from app.embedder.facenet_embedder import FacenetEmbedder
 from app.images import get_image_paths
 from app.logger import get_logger
 
@@ -42,6 +43,8 @@ def get_embedder(name: str) -> FaceEmbedder:
         return InsightfaceEmbedder()
     elif name == "dino":
         return DINOEmbedder()
+    elif name == "facenet":
+        return FacenetEmbedder()
     else:
         raise ValueError(f"Unknown embedder: {name}")
 
@@ -60,6 +63,8 @@ def process_images_in_directory(model_name, gpu_enabled, directories, out_templa
         all_embeddings = []
         for img in image_files:
             all_embeddings.extend(process_image(model_name, img))
+
+        logger.info(f"Embeddings size: {len(all_embeddings[0]['embedding'])}")
 
         df = pd.DataFrame(all_embeddings)
         now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -93,7 +98,7 @@ def main():
     parser.add_argument(
         "-m",
         "--model",
-        choices=["mediapipe", "insightface", "dino"],
+        choices=["mediapipe", "insightface", "dino", "facenet"],
         default="dino",
         help="Which face-embedding backend to use",
     )
