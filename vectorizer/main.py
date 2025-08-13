@@ -10,6 +10,7 @@ from app.embedder.dino_embedder import DINOEmbedder
 from app.embedder.mediapipe_embedder import MediapipeEmbedder
 from app.embedder.facenet_embedder import FacenetEmbedder
 from app.embedder.clip_embedder import CLIPEmbedder
+from app.embedder.vggface_embedder import VGGFaceEmbedder
 from app.images import get_image_paths
 from app.logger import get_logger
 
@@ -48,6 +49,8 @@ def get_embedder(name: str) -> FaceEmbedder:
         return FacenetEmbedder()
     elif name == "clip":
         return CLIPEmbedder()
+    elif name == "vggface":
+        return VGGFaceEmbedder()
     else:
         raise ValueError(f"Unknown embedder: {name}")
 
@@ -101,7 +104,7 @@ def main():
     parser.add_argument(
         "-m",
         "--model",
-        choices=["mediapipe", "insightface", "dino", "facenet", "clip"],
+        choices=["mediapipe", "insightface", "dino", "facenet", "clip", "vggface"],
         default="dino",
         help="Which face-embedding backend to use",
     )
