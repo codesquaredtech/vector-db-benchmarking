@@ -1,8 +1,8 @@
 echo "Creating network"
 docker network create vector_db_testing
 
-# 1280 for mediapipe, 512 for insightface, 768 for dino
-export DATABASE="ELASTICSEARCH"
+# 128 for facenet, 512 for insightface, 768 for dino, 1024 for clip, 1280 for mediapipe, 4096 for vggface
+export DATABASE="PGVECTOR"
 export COLLECTION_NAME="faces"
 export NUM_ITERATIONS=3
 export VECTOR_SIZE=512
