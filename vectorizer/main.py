@@ -55,6 +55,7 @@ def get_embedder(name: str) -> FaceEmbedder:
         raise ValueError(f"Unknown embedder: {name}")
 
 
+# TODO: Sort detected faces by X when saving them (the ordinal number of the face is still needed)
 def process_images_in_directory(model_name, gpu_enabled, directories, out_template):
     initialize_models(model_name, gpu_enabled)
 

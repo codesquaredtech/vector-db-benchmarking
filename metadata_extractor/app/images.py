@@ -1,6 +1,4 @@
 import os
-
-import mediapipe as mp
 import numpy as np
 from PIL import Image
 
@@ -20,7 +18,6 @@ def convert_bytes_to_image(image_path):
         image_pil = Image.open(image_path)
     except Exception as e:
         print(f"An error occurred: {e}. Continuing...")
-        return [], []
+        return []
     numpy_image = np.array(image_pil)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=numpy_image)
-    return numpy_image, mp_image
+    return numpy_image
