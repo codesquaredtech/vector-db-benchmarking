@@ -1,0 +1,22 @@
+networks:
+  vector_db_testing:
+    name: vector_db_testing
+    external: true
+
+services:
+  metadata_extractor:
+    build: .
+   # runtime: nvidia
+    volumes:
+      - ./images:/metadata_extractor/images
+      - ./main.py:/metadata_extractor/main.py
+      - ./logs:/metadata_extractor/logs
+      - ./output:/metadata_extractor/output
+      - ./app:/metadata_extractor/app
+    networks:
+      - vector_db_testing
+    env_file:
+      - .env
+    command:
+      - python3
+      - main.py
